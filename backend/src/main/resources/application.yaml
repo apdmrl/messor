@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: messor
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+
+  session:
+    jdbc:
+      initialize-schema: never
+
+server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${MESSOR_COOKIE_SECURE:false}
+        same-site: lax
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

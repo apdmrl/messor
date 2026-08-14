@@ -1,0 +1,26 @@
+name: messor-dev
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${MESSOR_DB_NAME:-messor}
+      POSTGRES_USER: ${MESSOR_DB_USER:-messor}
+      POSTGRES_PASSWORD: ${MESSOR_DB_PASSWORD:?Set MESSOR_DB_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${MESSOR_DB_PORT:-5432}:5432"
+    volumes:
+      - messor-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  messor-postgres-data:

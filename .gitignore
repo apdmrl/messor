@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Backend build output
+**/target/
+
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+**/coverage/
+
+# Test artifacts
+**/playwright-report/
+**/test-results/
+
+# IDE and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Superpowers temporary files
+.superpowers/
