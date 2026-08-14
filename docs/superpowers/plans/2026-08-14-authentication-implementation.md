@@ -25,6 +25,7 @@ Playwright.
   test has been run and its failure has been inspected.
 - Use PostgreSQL Testcontainers for persistence behavior. Never substitute H2.
 - Run the narrow test first, then the relevant module suite.
+- Backend unit tests use Surefire (`*Test`/`*Tests`); integration tests use Failsafe (`*IT`). Full backend gates run `./mvnw verify`, never only `./mvnw test`.
 - Do not weaken or delete a test to make the build pass.
 - Do not add registration, password reset, password change, JWT, OAuth, a
   global frontend state library or unrelated refactoring.
@@ -63,7 +64,7 @@ Run:
 ```bash
 cd backend
 set -a && source ../.env && set +a
-./mvnw test
+./mvnw verify
 cd ../frontend
 npm run lint
 npm run build
@@ -136,7 +137,7 @@ Run:
 
 ```bash
 ./mvnw -Dtest=PackageNamespaceTest,MessorApplicationTests test
-./mvnw test
+./mvnw verify
 ```
 
 Expected GREEN: Spring component scanning starts at
@@ -204,7 +205,7 @@ reusable base for later integration tests.
 Run:
 
 ```bash
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `test: add postgres integration test support`
@@ -248,7 +249,7 @@ constraints. Store email already normalized and enforce
 Run the narrow test, then:
 
 ```bash
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add user account schema`
@@ -305,7 +306,7 @@ Run:
 
 ```bash
 ./mvnw -Dtest=EmailNormalizerTest,UserAccountRepositoryIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add user identity persistence`
@@ -358,7 +359,7 @@ Run:
 
 ```bash
 ./mvnw -Dtest=PasswordConfigurationTest,DatabaseUserDetailsServiceTest test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add database authentication lookup`
@@ -406,7 +407,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=CsrfEndpointIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: expose protected csrf token endpoint`
@@ -464,7 +465,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=LoginIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add csrf-protected session login`
@@ -491,7 +492,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=CurrentUserIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: expose current authenticated user`
@@ -521,7 +522,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=LogoutIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add csrf-protected logout`
@@ -562,7 +563,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=DemoAccountInitializerIT test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: seed profile-scoped demo accounts`
@@ -591,7 +592,7 @@ Run:
 ```bash
 cd backend
 ./mvnw -Dtest=AuthenticationAuditLoggerTest test
-./mvnw test
+./mvnw verify
 ```
 
 Suggested commit: `feat: add safe authentication audit events`
@@ -857,7 +858,6 @@ Suggested commit: `feat: harden production auth proxy`
 
 ```bash
 cd backend
-./mvnw test
 ./mvnw verify
 ```
 
