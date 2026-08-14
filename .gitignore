@@ -26,3 +26,6 @@ Thumbs.db
 
 # Superpowers temporary files
 .superpowers/
+
+# Local Git worktrees
+.worktrees/
