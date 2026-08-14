@@ -1,0 +1,22 @@
+CREATE TABLE user_account (
+	id UUID NOT NULL,
+	email VARCHAR(320) NOT NULL,
+	password_hash VARCHAR(255) NOT NULL,
+	first_name VARCHAR(100) NOT NULL,
+	last_name VARCHAR(100) NOT NULL,
+	role VARCHAR(32) NOT NULL,
+	status VARCHAR(32) NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	version BIGINT NOT NULL DEFAULT 0,
+	CONSTRAINT pk_user_account PRIMARY KEY (id),
+	CONSTRAINT uq_user_account_email UNIQUE (email),
+	CONSTRAINT ck_user_account_email_normalized CHECK (email = lower(btrim(email))),
+	CONSTRAINT ck_user_account_email_not_blank CHECK (btrim(email) <> ''),
+	CONSTRAINT ck_user_account_password_hash_not_blank CHECK (btrim(password_hash) <> ''),
+	CONSTRAINT ck_user_account_first_name_not_blank CHECK (btrim(first_name) <> ''),
+	CONSTRAINT ck_user_account_last_name_not_blank CHECK (btrim(last_name) <> ''),
+	CONSTRAINT ck_user_account_role CHECK (role IN ('ORG_ADMIN', 'USER')),
+	CONSTRAINT ck_user_account_status CHECK (status IN ('ACTIVE', 'DISABLED')),
+	CONSTRAINT ck_user_account_version_non_negative CHECK (version >= 0)
+);
