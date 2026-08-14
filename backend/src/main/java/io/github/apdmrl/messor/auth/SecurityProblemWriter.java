@@ -1,6 +1,7 @@
 package io.github.apdmrl.messor.auth;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
@@ -29,8 +30,9 @@ public class SecurityProblemWriter {
 
 		response.setStatus(problem.getStatus());
 		response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-		objectMapper.writeValue(response.getWriter(), problem);
+		objectMapper.writeValue(response.getOutputStream(), problem);
 	}
 
 }

@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+
 import io.github.apdmrl.messor.identity.UserAccount;
 import io.github.apdmrl.messor.identity.UserAccountRepository;
 import io.github.apdmrl.messor.identity.UserRole;
@@ -46,8 +48,8 @@ class LoginIT extends PostgresIntegrationTestSupport {
 		UserAccount account = UserAccount.create(
 				"Login@Demo.Messor.App",
 				passwordEncoder.encode(password),
-				"Ada",
-				"Lovelace",
+				"Çağrı",
+				"Işık",
 				UserRole.ORG_ADMIN);
 		userAccountRepository.saveAndFlush(account);
 
@@ -71,9 +73,13 @@ class LoginIT extends PostgresIntegrationTestSupport {
 		assertThat(body.size()).isEqualTo(5);
 		assertThat(body.get("id").asText()).isEqualTo(account.getId().toString());
 		assertThat(body.get("email").asText()).isEqualTo("login@demo.messor.app");
-		assertThat(body.get("firstName").asText()).isEqualTo("Ada");
-		assertThat(body.get("lastName").asText()).isEqualTo("Lovelace");
+		assertThat(body.get("firstName").asText()).isEqualTo("Çağrı");
+		assertThat(body.get("lastName").asText()).isEqualTo("Işık");
 		assertThat(body.get("role").asText()).isEqualTo("ORG_ADMIN");
+
+		String utf8 = decodeUtf8(result);
+		assertThat(utf8).contains("\"firstName\":\"Çağrı\"", "\"lastName\":\"Işık\"");
+		assertThat(utf8).doesNotContain("\uFFFD");
 
 		assertThat(body.has("passwordHash")).isFalse();
 		assertThat(body.has("status")).isFalse();
@@ -221,6 +227,10 @@ class LoginIT extends PostgresIntegrationTestSupport {
 		assertThat(body.get("detail").asText()).isEqualTo("E-posta veya parola hatalı.");
 		assertThat(body.get("instance").asText()).isEqualTo("/api/auth/login");
 
+		String utf8 = decodeUtf8(result);
+		assertThat(utf8).contains("\"detail\":\"E-posta veya parola hatalı.\"");
+		assertThat(utf8).doesNotContain("\uFFFD");
+
 		String raw = result.getResponse().getContentAsString();
 		assertThat(raw).doesNotContain(email, password);
 		assertThat(body.has("exception")).isFalse();
@@ -236,7 +246,11 @@ class LoginIT extends PostgresIntegrationTestSupport {
 		MvcResult probe = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession))
 				.andReturn();
 
-		assertThat(probe.getResponse().getStatus()).isNotEqualTo(401);
+		assertThat(probe.getResponse().getStatus()).isEqualTo(404);
+	}
+
+	private String decodeUtf8(MvcResult result) {
+		return new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
 	}
 
 	private MvcResult fetchCsrfToken() throws Exception {

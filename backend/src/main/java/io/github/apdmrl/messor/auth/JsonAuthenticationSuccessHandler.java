@@ -1,6 +1,7 @@
 package io.github.apdmrl.messor.auth;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,8 +33,9 @@ public class JsonAuthenticationSuccessHandler implements AuthenticationSuccessHa
 
 		response.setStatus(HttpStatus.OK.value());
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+		response.setCharacterEncoding(StandardCharsets.UTF_8.name());
 		response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
-		objectMapper.writeValue(response.getWriter(), summary);
+		objectMapper.writeValue(response.getOutputStream(), summary);
 	}
 
 }
