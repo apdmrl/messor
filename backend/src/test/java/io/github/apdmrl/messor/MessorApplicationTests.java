@@ -1,10 +1,10 @@
 package io.github.apdmrl.messor;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import io.github.apdmrl.messor.support.PostgresIntegrationTestSupport;
 
-@SpringBootTest
-class MessorApplicationTests {
+import org.junit.jupiter.api.Test;
+
+class MessorApplicationTests extends PostgresIntegrationTestSupport {
 
 	@Test
 	void contextLoads() {

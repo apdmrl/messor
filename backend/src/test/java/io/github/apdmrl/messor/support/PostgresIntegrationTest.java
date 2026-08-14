@@ -25,8 +25,7 @@ class PostgresIntegrationTest extends PostgresIntegrationTestSupport {
 			DatabaseMetaData metaData = connection.getMetaData();
 			String url = metaData.getURL();
 
-			assertThat(url).startsWith("jdbc:postgresql://");
-			assertThat(url).doesNotContain(":5432/messor");
+			assertThat(url).isEqualTo(POSTGRES.getJdbcUrl());
 
 			assertThat(metaData.getDatabaseProductName()).isEqualTo("PostgreSQL");
 			assertThat(metaData.getDatabaseMajorVersion()).isEqualTo(17);
