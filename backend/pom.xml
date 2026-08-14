@@ -8,7 +8,7 @@
 		<version>4.1.0</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.abdullah</groupId>
+	<groupId>io.github.apdmrl</groupId>
 	<artifactId>messor</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>Messor</name>

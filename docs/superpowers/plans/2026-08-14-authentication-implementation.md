@@ -39,7 +39,7 @@ Playwright.
 
 - `AGENTS.md`
 - `backend/pom.xml`
-- `backend/src/test/java/com/abdullah/messor/MessorApplicationTests.java`
+- `backend/src/test/java/io/github/apdmrl/messor/MessorApplicationTests.java`
 - `frontend/package.json`
 - `compose.dev.yaml`
 - `compose.test.yaml`
@@ -91,13 +91,78 @@ git commit -m "chore: initialize messor workspace"
 
 Do not commit `.env`, build output, dependencies or `.superpowers/`.
 
+## Task 0A: Adopt the public Java package namespace
+
+**Move:**
+
+- `backend/src/main/java/com/abdullah/messor/MessorApplication.java` to
+  `backend/src/main/java/io/github/apdmrl/messor/MessorApplication.java`
+- `backend/src/test/java/com/abdullah/messor/MessorApplicationTests.java` to
+  `backend/src/test/java/io/github/apdmrl/messor/MessorApplicationTests.java`
+
+**Modify:** `backend/pom.xml` (`groupId` only)
+
+**Create first:**
+
+- `backend/src/test/java/com/abdullah/messor/PackageNamespaceTest.java`
+
+### Step 1: RED — express the public namespace
+
+Add a JUnit characterization test against the existing application class:
+
+```java
+assertThat(MessorApplication.class.getPackageName())
+    .isEqualTo("io.github.apdmrl.messor");
+```
+
+Run from the authentication worktree:
+
+```bash
+cd backend
+set -a && . ../../../.env && set +a
+./mvnw -Dtest=PackageNamespaceTest test
+```
+
+Expected RED: the current package is `com.abdullah.messor`.
+
+### Step 2: GREEN — move the root package
+
+Move the application and context test to the new directory and change their
+package declarations to `io.github.apdmrl.messor`. Change the project `groupId` in `backend/pom.xml` from `com.abdullah` to `io.github.apdmrl`, without changing artifactId, version or dependency coordinates. Move the namespace test into
+the new test package as part of the same refactor. Do not leave forwarding
+classes or duplicate application entry points.
+
+Run:
+
+```bash
+./mvnw -Dtest=PackageNamespaceTest,MessorApplicationTests test
+./mvnw test
+```
+
+Expected GREEN: Spring component scanning starts at
+`io.github.apdmrl.messor`, and all tests pass.
+
+### Step 3: Repository check
+
+```bash
+cd ..
+rg "com\.abdullah|com/abdullah" backend || true
+./backend/mvnw -f backend/pom.xml help:evaluate -Dexpression=project.groupId -q -DforceStdout
+git diff --check
+git status --short
+```
+
+The search must return no old Java package declarations, paths or Maven coordinates. Maven must report `io.github.apdmrl` as the effective project groupId.
+
+Suggested commit: `refactor: adopt public java package namespace`
+
 ## Task 1: Add PostgreSQL integration-test infrastructure
 
 **Modify:** `backend/pom.xml`
 
 **Create:**
 
-- `backend/src/test/java/com/abdullah/messor/support/PostgresIntegrationTest.java`
+- `backend/src/test/java/io/github/apdmrl/messor/support/PostgresIntegrationTest.java`
 - `backend/src/test/resources/application-test.yaml`
 
 ### Step 1: Add a failing container-backed context test
@@ -148,10 +213,10 @@ Suggested commit: `test: add postgres integration test support`
 
 **Create:**
 
-- `backend/src/test/java/com/abdullah/messor/identity/UserMigrationIT.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/UserMigrationIT.java`
 - `backend/src/main/resources/db/migration/V2__create_user_accounts.sql`
 
-### Step 1: RED — describe the schema
+### Step 1: RED â€” describe the schema
 
 Write an integration test using JDBC metadata and direct SQL that expects:
 
@@ -174,7 +239,7 @@ cd backend
 
 Expected RED: `user_account` does not exist.
 
-### Step 2: GREEN — add the minimum migration
+### Step 2: GREEN â€” add the minimum migration
 
 Use PostgreSQL UUID, `TIMESTAMPTZ`, explicit `NOT NULL`, unique and check
 constraints. Store email already normalized and enforce
@@ -192,15 +257,15 @@ Suggested commit: `feat: add user account schema`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/identity/UserAccount.java`
-- `backend/src/main/java/com/abdullah/messor/identity/UserRole.java`
-- `backend/src/main/java/com/abdullah/messor/identity/UserStatus.java`
-- `backend/src/main/java/com/abdullah/messor/identity/UserAccountRepository.java`
-- `backend/src/main/java/com/abdullah/messor/identity/EmailNormalizer.java`
-- `backend/src/test/java/com/abdullah/messor/identity/UserAccountRepositoryIT.java`
-- `backend/src/test/java/com/abdullah/messor/identity/EmailNormalizerTest.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/UserAccount.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/UserRole.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/UserStatus.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/UserAccountRepository.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/EmailNormalizer.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/UserAccountRepositoryIT.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/EmailNormalizerTest.java`
 
-### Step 1: RED — email normalization
+### Step 1: RED â€” email normalization
 
 Test trim plus lowercase using `Locale.ROOT`, including mixed-case demo email.
 Reject null or blank input at the appropriate boundary.
@@ -214,11 +279,11 @@ cd backend
 
 Expected RED: normalizer does not exist.
 
-### Step 2: GREEN — minimum normalizer
+### Step 2: GREEN â€” minimum normalizer
 
 Implement only the behavior asserted above. Re-run the narrow test.
 
-### Step 3: RED — repository mapping
+### Step 3: RED â€” repository mapping
 
 Write PostgreSQL integration tests for save, normalized-email lookup, ACTIVE
 and DISABLED status mapping, enum mapping and optimistic version updates.
@@ -231,7 +296,7 @@ Run:
 
 Expected RED: entity/repository do not exist.
 
-### Step 4: GREEN — entity and repository
+### Step 4: GREEN â€” entity and repository
 
 Map `UserAccount` explicitly to `user_account`. Use UUID IDs and `@Version`.
 Do not use Lombok and do not add JSON annotations to the entity.
@@ -252,13 +317,13 @@ required.
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/identity/MessorUserPrincipal.java`
-- `backend/src/main/java/com/abdullah/messor/identity/DatabaseUserDetailsService.java`
-- `backend/src/main/java/com/abdullah/messor/identity/PasswordConfiguration.java`
-- `backend/src/test/java/com/abdullah/messor/identity/DatabaseUserDetailsServiceTest.java`
-- `backend/src/test/java/com/abdullah/messor/identity/PasswordConfigurationTest.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/MessorUserPrincipal.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/DatabaseUserDetailsService.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/PasswordConfiguration.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/DatabaseUserDetailsServiceTest.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/PasswordConfigurationTest.java`
 
-### Step 1: RED — password hashing
+### Step 1: RED â€” password hashing
 
 Test that the configured encoder produces an Argon2 hash, matches the original
 password and rejects a wrong password. Never print either value.
@@ -272,19 +337,19 @@ cd backend
 
 Expected RED: no encoder bean/configuration.
 
-### Step 2: GREEN — configure Argon2id
+### Step 2: GREEN â€” configure Argon2id
 
 Use Spring Security's maintained Argon2 defaults. If Bouncy Castle is required,
 add the smallest Boot-compatible runtime dependency and explain it in the POM
 change review.
 
-### Step 3: RED — user lookup
+### Step 3: RED â€” user lookup
 
 Mock the repository and test normalized lookup, ACTIVE principal creation,
 DISABLED rejection and unknown-user rejection. External authentication errors
 must not distinguish these cases.
 
-### Step 4: GREEN — database-backed UserDetailsService
+### Step 4: GREEN â€” database-backed UserDetailsService
 
 Return a dedicated principal containing the internal user ID and safe profile
 fields. Do not return the JPA entity as the principal.
@@ -302,36 +367,36 @@ Suggested commit: `feat: add database authentication lookup`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/auth/SecurityConfiguration.java`
-- `backend/src/main/java/com/abdullah/messor/auth/AuthController.java`
-- `backend/src/main/java/com/abdullah/messor/auth/CsrfTokenResponse.java`
-- `backend/src/main/java/com/abdullah/messor/auth/SecurityProblemWriter.java`
-- `backend/src/main/java/com/abdullah/messor/auth/ApiAuthenticationEntryPoint.java`
-- `backend/src/main/java/com/abdullah/messor/auth/ApiAccessDeniedHandler.java`
-- `backend/src/test/java/com/abdullah/messor/auth/CsrfEndpointIT.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/SecurityConfiguration.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/AuthController.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/CsrfTokenResponse.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/SecurityProblemWriter.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/ApiAuthenticationEntryPoint.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/ApiAccessDeniedHandler.java`
+- `backend/src/test/java/io/github/apdmrl/messor/auth/CsrfEndpointIT.java`
 
 **Modify:** `backend/src/main/resources/application.yaml`
 
-### Step 1: RED — CSRF token contract
+### Step 1: RED â€” CSRF token contract
 
 With MockMvc and the PostgreSQL test base, test `GET /api/auth/csrf` returns
 `headerName`, `parameterName`, a nonblank masked token, and
 `Cache-Control: no-store`. Assert actuator health remains public while other
 API requests require authentication.
 
-### Step 2: GREEN — minimum endpoint and filter chain
+### Step 2: GREEN â€” minimum endpoint and filter chain
 
 Use `HttpSessionCsrfTokenRepository` and Spring Security's default XOR request
 handler. Permit only the CSRF endpoint, login processing URL and health probes.
 Use cookie-only session tracking. Do not enable wildcard CORS.
 
-### Step 3: RED — CSRF failures
+### Step 3: RED â€” CSRF failures
 
 Test missing token, invalid token and a token from session A submitted with
 session B. Expect `403`, `application/problem+json`, extension code
 `INVALID_CSRF_TOKEN`, `no-store`, no exception detail and no stack trace.
 
-### Step 4: GREEN — Problem Details access-denied handler
+### Step 4: GREEN â€” Problem Details access-denied handler
 
 Write errors through `SecurityProblemWriter`. Distinguish CSRF denial from a
 generic forbidden response without exposing internals.
@@ -350,14 +415,14 @@ Suggested commit: `feat: expose protected csrf token endpoint`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/auth/UserSummary.java`
-- `backend/src/main/java/com/abdullah/messor/auth/JsonAuthenticationSuccessHandler.java`
-- `backend/src/main/java/com/abdullah/messor/auth/ProblemAuthenticationFailureHandler.java`
-- `backend/src/test/java/com/abdullah/messor/auth/LoginIT.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/UserSummary.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/JsonAuthenticationSuccessHandler.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/ProblemAuthenticationFailureHandler.java`
+- `backend/src/test/java/io/github/apdmrl/messor/auth/LoginIT.java`
 
 **Modify:** `SecurityConfiguration.java`
 
-### Step 1: RED — successful login
+### Step 1: RED â€” successful login
 
 Seed an ACTIVE test user with an Argon2 hash. Fetch a CSRF token, submit
 form-urlencoded `email` and `password`, then assert `200`, `no-store`, an
@@ -366,29 +431,29 @@ authenticated JDBC-backed session and exactly these response fields:
 
 Explicitly assert the response omits `passwordHash`, `status` and `version`.
 
-### Step 2: GREEN — success handler
+### Step 2: GREEN â€” success handler
 
 Configure `loginProcessingUrl("/api/auth/login")`, email as the username
 parameter, and a JSON success handler returning only `UserSummary`.
 
-### Step 3: RED — indistinguishable failures
+### Step 3: RED â€” indistinguishable failures
 
 Test unknown email, wrong password and DISABLED user. All must return the same
 `401 application/problem+json`, `AUTHENTICATION_FAILED`, Turkish generic
 detail and `no-store`.
 
-### Step 4: GREEN — failure handler
+### Step 4: GREEN â€” failure handler
 
 Add the minimum Problem Details failure handler. Do not include submitted email
 or exception messages.
 
-### Step 5: RED — session and token rotation
+### Step 5: RED â€” session and token rotation
 
 Assert session fixation protection rotates the session identifier, the
 pre-login CSRF token cannot be reused, and a newly fetched post-login token
 works.
 
-### Step 6: GREEN — rely on and verify Spring Security rotation
+### Step 6: GREEN â€” rely on and verify Spring Security rotation
 
 Use Spring Security's session authentication strategy. Add custom token
 mutation only if the failing test proves the framework configuration does not
@@ -408,7 +473,7 @@ Suggested commit: `feat: add csrf-protected session login`
 
 **Modify:** `AuthController.java`
 
-**Create:** `backend/src/test/java/com/abdullah/messor/auth/CurrentUserIT.java`
+**Create:** `backend/src/test/java/io/github/apdmrl/messor/auth/CurrentUserIT.java`
 
 ### Step 1: RED
 
@@ -435,8 +500,8 @@ Suggested commit: `feat: expose current authenticated user`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/auth/NoContentLogoutSuccessHandler.java`
-- `backend/src/test/java/com/abdullah/messor/auth/LogoutIT.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/NoContentLogoutSuccessHandler.java`
+- `backend/src/test/java/io/github/apdmrl/messor/auth/LogoutIT.java`
 
 **Modify:** `SecurityConfiguration.java`
 
@@ -465,8 +530,8 @@ Suggested commit: `feat: add csrf-protected logout`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/identity/DemoAccountInitializer.java`
-- `backend/src/test/java/com/abdullah/messor/identity/DemoAccountInitializerIT.java`
+- `backend/src/main/java/io/github/apdmrl/messor/identity/DemoAccountInitializer.java`
+- `backend/src/test/java/io/github/apdmrl/messor/identity/DemoAccountInitializerIT.java`
 - `backend/src/main/resources/application-demo.yaml`
 
 **Modify:**
@@ -506,8 +571,8 @@ Suggested commit: `feat: seed profile-scoped demo accounts`
 
 **Create:**
 
-- `backend/src/main/java/com/abdullah/messor/auth/AuthenticationAuditLogger.java`
-- `backend/src/test/java/com/abdullah/messor/auth/AuthenticationAuditLoggerTest.java`
+- `backend/src/main/java/io/github/apdmrl/messor/auth/AuthenticationAuditLogger.java`
+- `backend/src/test/java/io/github/apdmrl/messor/auth/AuthenticationAuditLoggerTest.java`
 
 ### Step 1: RED
 
@@ -618,23 +683,23 @@ Suggested commit: `feat: add browser session auth client`
 - `frontend/src/features/auth/LoginPage.css`
 - `frontend/src/features/auth/LoginPage.test.tsx`
 
-### Step 1: RED — behavior and accessibility
+### Step 1: RED â€” behavior and accessibility
 
 Test correct label associations, email/password input types, keyboard submit,
 loading and disabled states, generic Problem Details display, demo account
 emails, absence of a demo password, and successful-login callback.
 
-### Step 2: GREEN — semantic form
+### Step 2: GREEN â€” semantic form
 
 Implement the minimum controlled form and call the auth client. Use a live
 region for errors and retain visible focus styling.
 
-### Step 3: RED — responsive contract markers
+### Step 3: RED â€” responsive contract markers
 
 Unit tests should assert stable layout regions and accessible branding, not
 pixel dimensions. Leave actual overflow and viewport behavior for Playwright.
 
-### Step 4: GREEN — approved option A styles
+### Step 4: GREEN â€” approved option A styles
 
 Use mobile-first CSS:
 
@@ -755,19 +820,19 @@ Suggested commit: `test: verify responsive login experience`
 - `.env.example`
 - `README.md`
 
-### Step 1: RED — configuration assertions
+### Step 1: RED â€” configuration assertions
 
 Before implementation, add either a small configuration test or explicit
 failing validation demonstrating production cookie settings are absent. Define
 the expected Nginx locations and rate-limit zones before adding them.
 
-### Step 2: GREEN — production cookie profile
+### Step 2: GREEN â€” production cookie profile
 
 Configure `__Host-MESSOR_SESSION`, Secure, HttpOnly, SameSite=Lax, Path=/ and no
 Domain in production. Keep a non-`__Host-` development cookie with Secure=false
 so localhost HTTP remains usable.
 
-### Step 3: GREEN — same-origin reverse proxy and limits
+### Step 3: GREEN â€” same-origin reverse proxy and limits
 
 Serve the frontend and proxy `/api/` to the backend. Add a strict per-IP limit
 for `/api/auth/login` and a higher limit for `/api/auth/csrf`. Return/document
@@ -868,7 +933,7 @@ Suggested commit: `docs: document authentication setup and verification`
 ## Expected file tree
 
 ```text
-backend/src/main/java/com/abdullah/messor/
+backend/src/main/java/io/github/apdmrl/messor/
   auth/
     ApiAccessDeniedHandler.java
     ApiAuthenticationEntryPoint.java
