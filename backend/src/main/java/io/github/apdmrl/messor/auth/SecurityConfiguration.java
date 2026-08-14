@@ -32,7 +32,8 @@ public class SecurityConfiguration {
 			ApiAuthenticationEntryPoint authenticationEntryPoint,
 			ApiAccessDeniedHandler accessDeniedHandler,
 			JsonAuthenticationSuccessHandler successHandler,
-			ProblemAuthenticationFailureHandler failureHandler) throws Exception {
+			ProblemAuthenticationFailureHandler failureHandler,
+			NoContentLogoutSuccessHandler logoutSuccessHandler) throws Exception {
 
 		http.csrf(csrf -> csrf
 				.csrfTokenRepository(csrfTokenRepository)
@@ -48,6 +49,12 @@ public class SecurityConfiguration {
 				.passwordParameter("password")
 				.successHandler(successHandler)
 				.failureHandler(failureHandler));
+
+		http.logout(logout -> logout
+				.logoutUrl("/api/auth/logout")
+				.invalidateHttpSession(true)
+				.clearAuthentication(true)
+				.logoutSuccessHandler(logoutSuccessHandler));
 
 		http.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers("/api/auth/csrf", "/actuator/health", "/actuator/health/**").permitAll()
