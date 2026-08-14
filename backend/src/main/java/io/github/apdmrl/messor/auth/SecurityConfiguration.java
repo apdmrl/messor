@@ -30,7 +30,9 @@ public class SecurityConfiguration {
 			HttpSessionCsrfTokenRepository csrfTokenRepository,
 			XorCsrfTokenRequestAttributeHandler csrfTokenRequestHandler,
 			ApiAuthenticationEntryPoint authenticationEntryPoint,
-			ApiAccessDeniedHandler accessDeniedHandler) throws Exception {
+			ApiAccessDeniedHandler accessDeniedHandler,
+			JsonAuthenticationSuccessHandler successHandler,
+			ProblemAuthenticationFailureHandler failureHandler) throws Exception {
 
 		http.csrf(csrf -> csrf
 				.csrfTokenRepository(csrfTokenRepository)
@@ -39,6 +41,13 @@ public class SecurityConfiguration {
 		http.exceptionHandling(exceptionHandling -> exceptionHandling
 				.authenticationEntryPoint(authenticationEntryPoint)
 				.accessDeniedHandler(accessDeniedHandler));
+
+		http.formLogin(formLogin -> formLogin
+				.loginProcessingUrl("/api/auth/login")
+				.usernameParameter("email")
+				.passwordParameter("password")
+				.successHandler(successHandler)
+				.failureHandler(failureHandler));
 
 		http.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers("/api/auth/csrf", "/actuator/health", "/actuator/health/**").permitAll()
