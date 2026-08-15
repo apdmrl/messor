@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,7 +74,9 @@ class DemoAccountInitializerConfigurationTest {
 		ApplicationContextRunner missingRunner = new ApplicationContextRunner()
 				.withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
 				.withUserConfiguration(MockBeans.class)
-				.withPropertyValues("spring.profiles.active=demo");
+				.withPropertyValues("spring.profiles.active=demo")
+				.withInitializer(context -> context.getEnvironment().getPropertySources()
+						.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME));
 
 		missingRunner.run(context -> {
 			assertThat(context).hasFailed();
