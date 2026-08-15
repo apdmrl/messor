@@ -113,21 +113,87 @@ frontend source code, and never commit a real or test password.
 
 ## Development
 
-### Running the demo profile
+### One-command local demo
+
+The local demo starts PostgreSQL, the Spring Boot backend and the Nginx-served
+frontend with a single command. The only host-published port is the frontend
+gateway on `127.0.0.1:8088`.
+
+#### 1. Prepare the environment
 
 ```bash
 cp .env.example .env
-# Replace the placeholder values inside .env
-docker compose --env-file .env -f compose.dev.yaml up -d
 ```
 
+Then edit `.env` and replace the placeholder values with local values:
+
+- `MESSOR_DB_PASSWORD` — the PostgreSQL password.
+- `MESSOR_DEMO_PASSWORD` — the shared password for the demo accounts.
+- `MESSOR_DEV_PORT` — the host port for the frontend gateway (default `8088`).
+
+Never commit `.env`; it is git-ignored. The demo password is read by the
+backend only from `.env` and is never embedded in the frontend source code or
+build output.
+
+#### 2. Start
+
 ```bash
-cd backend
-set -a
-. ../.env
-set +a
-SPRING_PROFILES_ACTIVE=demo ./mvnw spring-boot:run
+docker compose --env-file .env -f compose.dev.yaml up --build
 ```
+
+Open the application in your browser at:
+
+```text
+http://localhost:8088
+```
+
+#### 3. Demo accounts
+
+The `demo` Spring profile seeds two local demo accounts. Both share the
+password from `MESSOR_DEMO_PASSWORD`.
+
+| Email | Role |
+| --- | --- |
+| `admin@demo.messor.app` | `ORG_ADMIN` |
+| `member@demo.messor.app` | `USER` |
+
+#### 4. Check service status and health
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml ps
+curl -fsS http://localhost:8088/actuator/health
+```
+
+The health endpoint is proxied to the backend through the frontend gateway, so
+a single origin serves both the UI and the health check.
+
+#### 5. Stop
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml down
+```
+
+#### 6. Reset the database volume (optional)
+
+To start from a clean database, remove the demo volume:
+
+```bash
+docker compose --env-file .env -f compose.dev.yaml down -v
+```
+
+The next `up --build` recreates the volume and re-runs the Flyway migrations
+and the idempotent demo-account seeding.
+
+#### 7. Verify the compose contract
+
+```bash
+sh scripts/verify-dev-compose.sh
+```
+
+This checks that `.env` exists, the compose configuration is valid, the service
+list is exactly `postgres`, `backend` and `frontend`, the backend runs the
+`demo` profile, the frontend publishes port `8088`, and the production
+`compose.yaml` and Nginx files are unchanged.
 
 In development the session cookie is not `Secure` (`Secure=false`), so the
 application works over plain HTTP on `localhost`. The production cookie name
