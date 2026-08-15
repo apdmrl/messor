@@ -46,9 +46,17 @@ outside the first release.
 
 ### Frontend
 
+Installed:
+
 - React
 - TypeScript
 - Vite
+- Vitest
+- React Testing Library
+- Playwright
+
+Planned (not yet installed):
+
 - TanStack Query
 - React Router
 - React Hook Form
@@ -65,7 +73,6 @@ outside the first release.
 - Playwright
 - Docker Compose
 - Nginx
-- GitHub Actions
 
 ## Architecture
 
@@ -152,8 +159,14 @@ docker compose --env-file .env -f compose.yaml up -d --build
 ```
 
 This builds the backend and frontend images, starts PostgreSQL, waits for it to
-be healthy, starts the backend, and finally starts the Nginx gateway. The
-application is then available at `http://localhost:${MESSOR_PUBLIC_PORT}`.
+be healthy, starts the backend, and finally starts the Nginx gateway. The Nginx
+gateway listens on plain HTTP at `http://localhost:${MESSOR_PUBLIC_PORT}`.
+
+That HTTP port is intended for the internal/edge connection only. Real browser
+authentication requires HTTPS: the `__Host-MESSOR_SESSION` cookie is `Secure`
+and is rejected by browsers over plain HTTP. Terminate TLS at the deployment
+edge (a load balancer or TLS proxy) in front of the Nginx container, as
+described in the next section.
 
 ### `prod` vs `prod,demo`
 

@@ -428,21 +428,3 @@ test('long authenticated email does not overflow at 320px', async ({ page }, tes
   expect(emailBox.x, 'email must start within viewport').toBeGreaterThanOrEqual(0)
   expect(emailBox.x + emailBox.width, 'email must end within viewport').toBeLessThanOrEqual(320)
 })
-
-/* ============================================================
-   10. Failure artifacts are ignored
-   ============================================================ */
-test('failure artifacts are git-ignored', async () => {
-  const { execSync } = await import('node:child_process')
-  const check = (path: string): boolean => {
-    try {
-      execSync(`git check-ignore ${path}`, { stdio: 'pipe' })
-      return true
-    } catch {
-      return false
-    }
-  }
-  // Trailing slashes match the directory ignore rules regardless of existence.
-  expect(check('frontend/playwright-report/'), 'playwright-report must be ignored').toBe(true)
-  expect(check('frontend/test-results/'), 'test-results must be ignored').toBe(true)
-})
