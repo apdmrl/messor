@@ -97,6 +97,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .app-header__identity {
@@ -105,6 +107,8 @@
 }
 
 .app-header__email {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-size: 0.85rem;
   color: var(--color-muted);
 }
