@@ -1,6 +1,6 @@
 # Messor Portfolio MVP Design
 
-- Status: Proposed for approval
+- Status: Approved
 - Scope: Local-first portfolio MVP after authentication
 - Date: 2026-08-16
 
