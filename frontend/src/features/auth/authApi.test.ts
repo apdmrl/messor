@@ -45,6 +45,13 @@ function csrfResponse(token: string): Response {
   })
 }
 
+function malformedJsonResponse(status = 200): Response {
+  return new Response('{not valid json', {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 function fetchMock(): Mock {
   return vi.fn()
 }
@@ -187,22 +194,27 @@ describe('authApi', () => {
       .mockResolvedValueOnce(jsonResponse(userSummary))
       .mockResolvedValueOnce(csrfResponse('rotated-token'))
       .mockResolvedValueOnce(problemResponse(401, 'UNAUTHENTICATED', 'Not authenticated'))
+      .mockResolvedValueOnce(csrfResponse('new-token'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
 
-    const { login, getCurrentUser } = await loadAuthApi()
+    const { login, getCurrentUser, logout } = await loadAuthApi()
     await login('user@example.com', 's3cret')
 
     const result = await getCurrentUser()
     expect(result).toBeNull()
 
     // After cache clear, a subsequent state-changing call must fetch a new token.
-    fetchSpy.mockResolvedValueOnce(csrfResponse('new-token'))
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }))
-    const { logout } = await loadAuthApi()
+    // Exact sequence: 1 csrf, 2 login, 3 csrf-rotate, 4 me(401), 5 new csrf, 6 logout.
     await logout()
-    expect(fetchSpy).toHaveBeenCalledWith(
+    expect(fetchSpy).toHaveBeenCalledTimes(6)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      5,
       CSRF_URL,
       expect.objectContaining({ credentials: 'include' }),
     )
+    const logoutCall = fetchSpy.mock.calls[5]
+    expect(logoutCall[0]).toBe(LOGOUT_URL)
+    expect(logoutCall[1].headers[CSRF_HEADER]).toBe('new-token')
   })
 
   it('login 401 Problem Details throws AuthApiError with status, code and safe detail', async () => {
@@ -227,21 +239,26 @@ describe('authApi', () => {
     fetchSpy
       .mockResolvedValueOnce(csrfResponse('pre-login-token'))
       .mockResolvedValueOnce(problemResponse(403, 'INVALID_CSRF_TOKEN', 'Invalid CSRF token'))
+      .mockResolvedValueOnce(csrfResponse('fresh-token'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
 
-    const { login } = await loadAuthApi()
+    const { login, logout } = await loadAuthApi()
     await expect(login('user@example.com', 's3cret')).rejects.toMatchObject({
       code: 'INVALID_CSRF_TOKEN',
     })
 
     // Next state-changing call must fetch a fresh CSRF token.
-    fetchSpy.mockResolvedValueOnce(csrfResponse('fresh-token'))
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }))
-    const { logout } = await loadAuthApi()
+    // Exact sequence: 1 csrf, 2 failed login, 3 new csrf, 4 logout.
     await logout()
-    expect(fetchSpy).toHaveBeenCalledWith(
+    expect(fetchSpy).toHaveBeenCalledTimes(4)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      3,
       CSRF_URL,
       expect.objectContaining({ credentials: 'include' }),
     )
+    const logoutCall = fetchSpy.mock.calls[3]
+    expect(logoutCall[0]).toBe(LOGOUT_URL)
+    expect(logoutCall[1].headers[CSRF_HEADER]).toBe('fresh-token')
   })
 
   it('logout on 204 does not parse a body, resolves void and clears the token', async () => {
@@ -250,20 +267,25 @@ describe('authApi', () => {
       .mockResolvedValueOnce(jsonResponse(userSummary))
       .mockResolvedValueOnce(csrfResponse('rotated-token'))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(csrfResponse('new-token'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
 
     const { login, logout } = await loadAuthApi()
     await login('user@example.com', 's3cret')
     await expect(logout()).resolves.toBeUndefined()
 
     // After logout the cache is cleared; next call fetches a new token.
-    fetchSpy.mockResolvedValueOnce(csrfResponse('new-token'))
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }))
-    const { logout: logoutAgain } = await loadAuthApi()
-    await logoutAgain()
-    expect(fetchSpy).toHaveBeenCalledWith(
+    // Exact sequence: 1 csrf, 2 login, 3 csrf-rotate, 4 logout(204), 5 new csrf, 6 logout.
+    await logout()
+    expect(fetchSpy).toHaveBeenCalledTimes(6)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      5,
       CSRF_URL,
       expect.objectContaining({ credentials: 'include' }),
     )
+    const logoutCall = fetchSpy.mock.calls[5]
+    expect(logoutCall[0]).toBe(LOGOUT_URL)
+    expect(logoutCall[1].headers[CSRF_HEADER]).toBe('new-token')
   })
 
   it('malformed non-Problem error body produces a safe fallback AuthApiError', async () => {
@@ -287,9 +309,71 @@ describe('authApi', () => {
     })
   })
 
+  it('GET /csrf 200 with malformed JSON rejects with a safe AuthApiError', async () => {
+    fetchSpy.mockResolvedValueOnce(malformedJsonResponse(200))
+
+    const { login, AuthApiError } = await loadAuthApi()
+    const error = await login('user@example.com', 's3cret').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(AuthApiError)
+    expect(error).toMatchObject({
+      status: 200,
+      code: 'HTTP_ERROR',
+      message: 'İstek tamamlanamadı.',
+    })
+    expect(error).not.toBeInstanceOf(SyntaxError)
+  })
+
+  it('POST /login 200 with malformed JSON rejects safely and clears the pre-login token', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('pre-login-token'))
+      .mockResolvedValueOnce(malformedJsonResponse(200))
+      .mockResolvedValueOnce(csrfResponse('new-token'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const { login, logout, AuthApiError } = await loadAuthApi()
+    const error = await login('user@example.com', 's3cret').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(AuthApiError)
+    expect(error).toMatchObject({
+      status: 200,
+      code: 'HTTP_ERROR',
+      message: 'İstek tamamlanamadı.',
+    })
+    expect(error).not.toBeInstanceOf(SyntaxError)
+
+    // Server-side auth may have happened, so the pre-login token is no longer
+    // trustworthy. A subsequent logout must fetch a fresh CSRF token.
+    // Exact sequence: 1 csrf, 2 login(200 malformed), 3 new csrf, 4 logout.
+    await logout()
+    expect(fetchSpy).toHaveBeenCalledTimes(4)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      3,
+      CSRF_URL,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const logoutCall = fetchSpy.mock.calls[3]
+    expect(logoutCall[0]).toBe(LOGOUT_URL)
+    expect(logoutCall[1].headers[CSRF_HEADER]).toBe('new-token')
+  })
+
+  it('GET /me 200 with malformed JSON rejects with a safe AuthApiError', async () => {
+    fetchSpy.mockResolvedValueOnce(malformedJsonResponse(200))
+
+    const { getCurrentUser, AuthApiError } = await loadAuthApi()
+    const error = await getCurrentUser().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(AuthApiError)
+    expect(error).toMatchObject({
+      status: 200,
+      code: 'HTTP_ERROR',
+      message: 'İstek tamamlanamadı.',
+    })
+    expect(error).not.toBeInstanceOf(SyntaxError)
+  })
+
   it('login/getCurrentUser/logout never call localStorage or sessionStorage setItem', async () => {
-    const localStorageSet = vi.spyOn(Storage.prototype, 'setItem')
-    const sessionStorageSet = vi.spyOn(Storage.prototype, 'setItem')
+    const storageSet = vi.spyOn(Storage.prototype, 'setItem')
 
     fetchSpy
       .mockResolvedValueOnce(csrfResponse('pre-login-token'))
@@ -303,7 +387,8 @@ describe('authApi', () => {
     await getCurrentUser()
     await logout()
 
-    expect(localStorageSet).not.toHaveBeenCalled()
-    expect(sessionStorageSet).not.toHaveBeenCalled()
+    // A single spy on Storage.prototype.setItem covers both localStorage and
+    // sessionStorage, since both inherit from Storage.
+    expect(storageSet).not.toHaveBeenCalled()
   })
 })

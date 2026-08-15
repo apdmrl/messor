@@ -67,19 +67,24 @@ function clearCsrfToken(): void {
   csrfToken = null
 }
 
-async function parseProblem(response: Response): Promise<AuthApiError> {
-  let problem: ProblemDetails | null = null
+/**
+ * Safely parse a JSON response body. Any parse failure (malformed JSON, empty
+ * body, network-level body read error) yields `null` instead of leaking a raw
+ * parser exception to callers. Callers are responsible for turning a `null`
+ * result into a safe AuthApiError.
+ */
+async function safeJson(response: Response): Promise<unknown> {
   try {
-    const body: unknown = await response.json()
-    if (isProblemDetails(body)) {
-      problem = body
-    }
+    return await response.json()
   } catch {
-    // Malformed or non-JSON body: fall through to the generic error.
+    return null
   }
+}
 
-  if (problem) {
-    return new AuthApiError(problem.status, problem.code, problem.detail)
+async function parseProblem(response: Response): Promise<AuthApiError> {
+  const body: unknown = await safeJson(response)
+  if (isProblemDetails(body)) {
+    return new AuthApiError(body.status, body.code, body.detail)
   }
 
   return new AuthApiError(response.status, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
@@ -95,7 +100,7 @@ async function fetchCsrfToken(): Promise<CsrfTokenResponse> {
     throw await parseProblem(response)
   }
 
-  const body: unknown = await response.json()
+  const body: unknown = await safeJson(response)
   if (!isCsrfTokenResponse(body)) {
     throw new AuthApiError(response.status, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
   }
@@ -133,13 +138,17 @@ export async function login(email: string, password: string): Promise<UserSummar
     throw error
   }
 
-  const user: unknown = await response.json()
+  // A 2xx login means server-side authentication may have occurred, so the
+  // pre-login CSRF token is no longer trustworthy. Discard it before parsing
+  // the body so a malformed/invalid UserSummary still leaves the cache cleared.
+  clearCsrfToken()
+
+  const user: unknown = await safeJson(response)
   if (!isUserSummary(user)) {
     throw new AuthApiError(response.status, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
   }
 
-  // Discard the pre-login token and rotate a fresh one for subsequent requests.
-  clearCsrfToken()
+  // Rotate a fresh token for subsequent requests.
   await fetchCsrfToken()
 
   return user
@@ -161,7 +170,7 @@ export async function getCurrentUser(): Promise<UserSummary | null> {
     throw await parseProblem(response)
   }
 
-  const user: unknown = await response.json()
+  const user: unknown = await safeJson(response)
   if (!isUserSummary(user)) {
     throw new AuthApiError(response.status, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
   }
