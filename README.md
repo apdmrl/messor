@@ -196,9 +196,21 @@ The login endpoint is the primary brute-force target, so it gets a strict limit
 with a small burst. The CSRF endpoint is fetched frequently by the SPA, so it
 gets a higher limit with a larger burst.
 
-When a limit is exceeded, Nginx returns `429 Too Many Requests` with a JSON
-problem-details body (`code: "RATE_LIMITED"`). If you see a `429`, slow down and
-retry later.
+When a limit is exceeded, Nginx returns `429 Too Many Requests` with a
+problem-details body (`code: "RATE_LIMITED"`) and the
+`application/problem+json` media type. If you see a `429`, slow down and retry
+later.
+
+Rate limiting keys on `$binary_remote_addr`, the direct connection peer. For
+clients connecting directly to the Nginx container this is the real client IP.
+Behind a TLS edge (load balancer or TLS proxy), the edge must reliably forward
+the source IP to Nginx for per-client rate limiting to be meaningful. Nginx
+deliberately discards any client-supplied `X-Forwarded-For` value and forwards
+only the direct peer address to the backend, so a client cannot spoof its IP
+toward the backend. If you need real client-IP rate limiting behind a TLS edge,
+configure a deployment-specific trusted-proxy setup (for example, a trusted
+`set_real_ip_from` list) so Nginx trusts the edge's forwarded address. Do not
+unconditionally trust unknown proxy networks.
 
 ### Validating the Nginx configuration
 

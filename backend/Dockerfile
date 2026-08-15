@@ -20,6 +20,14 @@ RUN mvn -q -DskipTests package
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
+# Install curl for the container healthcheck. The base JRE image does not ship
+# wget or curl, and the compose healthcheck must probe the actuator endpoint
+# rather than merely check that the process is alive. The apt cache is removed
+# in the same layer so it is not carried into the final image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as a non-root user.
 RUN useradd --system --uid 10001 --create-home messor
 USER messor
