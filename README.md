@@ -46,9 +46,17 @@ outside the first release.
 
 ### Frontend
 
+Installed:
+
 - React
 - TypeScript
 - Vite
+- Vitest
+- React Testing Library
+- Playwright
+
+Planned (not yet installed):
+
 - TanStack Query
 - React Router
 - React Hook Form
@@ -65,7 +73,6 @@ outside the first release.
 - Playwright
 - Docker Compose
 - Nginx
-- GitHub Actions
 
 ## Architecture
 
@@ -75,9 +82,160 @@ Messor is a modular monolith.
 Browser
    |
    v
-React + TypeScript
+Nginx gateway (serves the React frontend and proxies /api/)
    |
-   v
-Spring Boot API
+   +-- React + TypeScript (static build served by Nginx)
    |
-   +-- PostgreSQL
+   +-- Spring Boot API (internal network)
+          |
+          +-- PostgreSQL (internal network)
+```
+
+The browser talks to a single origin. Nginx serves the built React frontend at
+`/` and reverse proxies `/api/` to the Spring Boot backend. PostgreSQL and the
+backend are reachable only on the internal Docker network; the only public port
+is the Nginx gateway.
+
+## Demo profile
+
+The `demo` Spring profile seeds two local demo accounts for development and
+demonstration purposes only. It is not intended for production use.
+
+| Email | Role |
+| --- | --- |
+| `admin@demo.messor.app` | `ORG_ADMIN` |
+| `member@demo.messor.app` | `USER` |
+
+Both accounts share a common password supplied through the
+`MESSOR_DEMO_PASSWORD` environment variable. If the variable is missing or
+blank, the demo profile will not start. Never hard-code the password in the
+frontend source code, and never commit a real or test password.
+
+## Development
+
+### Running the demo profile
+
+```bash
+cp .env.example .env
+# Replace the placeholder values inside .env
+docker compose --env-file .env -f compose.dev.yaml up -d
+```
+
+```bash
+cd backend
+set -a
+. ../.env
+set +a
+SPRING_PROFILES_ACTIVE=demo ./mvnw spring-boot:run
+```
+
+In development the session cookie is not `Secure` (`Secure=false`), so the
+application works over plain HTTP on `localhost`. The production cookie name
+`__Host-MESSOR_SESSION` is never used in development.
+
+## Production
+
+### Prepare the environment
+
+```bash
+cp .env.example .env
+# Replace every placeholder with a real value. Never commit .env.
+```
+
+The production compose reads secrets from `.env`. Required variables:
+
+- `MESSOR_DB_NAME`, `MESSOR_DB_USER`, `MESSOR_DB_PASSWORD` — PostgreSQL
+  credentials.
+- `MESSOR_PUBLIC_PORT` — the public port exposed by the Nginx gateway
+  (default `80`).
+- `MESSOR_SPRING_PROFILES_ACTIVE` — `prod` for a real deployment, or
+  `prod,demo` to seed the demo accounts.
+- `MESSOR_DEMO_PASSWORD` — required only when the `demo` profile is active.
+
+### Build and run
+
+```bash
+docker compose --env-file .env -f compose.yaml up -d --build
+```
+
+This builds the backend and frontend images, starts PostgreSQL, waits for it to
+be healthy, starts the backend, and finally starts the Nginx gateway. The Nginx
+gateway listens on plain HTTP at `http://localhost:${MESSOR_PUBLIC_PORT}`.
+
+That HTTP port is intended for the internal/edge connection only. Real browser
+authentication requires HTTPS: the `__Host-MESSOR_SESSION` cookie is `Secure`
+and is rejected by browsers over plain HTTP. Terminate TLS at the deployment
+edge (a load balancer or TLS proxy) in front of the Nginx container, as
+described in the next section.
+
+### `prod` vs `prod,demo`
+
+- `MESSOR_SPRING_PROFILES_ACTIVE=prod` — a real deployment. No demo accounts
+  are created.
+- `MESSOR_SPRING_PROFILES_ACTIVE=prod,demo` — a demonstration deployment. The
+  demo accounts are seeded with the password from `MESSOR_DEMO_PASSWORD`.
+
+The demo password is read from the environment by the backend only. It is never
+embedded in the frontend source code or build output.
+
+### HTTPS / TLS edge requirement
+
+The production session cookie is `__Host-MESSOR_SESSION`. The `__Host-` prefix
+requires the cookie to be `Secure`, to have `Path=/` and to carry no `Domain`
+attribute. Browsers reject the cookie unless the application is served over
+HTTPS.
+
+TLS is terminated at the deployment edge (a load balancer or TLS proxy in front
+of the Nginx container). The Nginx container itself listens on plain HTTP and
+forwards `X-Forwarded-Proto` to the backend. You must terminate TLS before
+requests reach the browser, otherwise the session cookie will not be stored.
+
+### Same-origin frontend and API
+
+The frontend and the API share the same origin through Nginx. The browser never
+makes cross-origin requests, so no CORS headers are configured and no wildcard
+CORS is used.
+
+### Nginx rate limits
+
+Nginx applies per-IP rate limits to the authentication endpoints:
+
+| Endpoint | Rate | Burst |
+| --- | --- | --- |
+| `POST /api/auth/login` | 5 requests/minute/IP | 5 |
+| `GET /api/auth/csrf` | 30 requests/minute/IP | 30 |
+
+The login endpoint is the primary brute-force target, so it gets a strict limit
+with a small burst. The CSRF endpoint is fetched frequently by the SPA, so it
+gets a higher limit with a larger burst.
+
+When a limit is exceeded, Nginx returns `429 Too Many Requests` with a
+problem-details body (`code: "RATE_LIMITED"`) and the
+`application/problem+json` media type. If you see a `429`, slow down and retry
+later.
+
+Rate limiting keys on `$binary_remote_addr`, the direct connection peer. For
+clients connecting directly to the Nginx container this is the real client IP.
+Behind a TLS edge (load balancer or TLS proxy), the edge must reliably forward
+the source IP to Nginx for per-client rate limiting to be meaningful. Nginx
+deliberately discards any client-supplied `X-Forwarded-For` value and forwards
+only the direct peer address to the backend, so a client cannot spoof its IP
+toward the backend. If you need real client-IP rate limiting behind a TLS edge,
+configure a deployment-specific trusted-proxy setup (for example, a trusted
+`set_real_ip_from` list) so Nginx trusts the edge's forwarded address. Do not
+unconditionally trust unknown proxy networks.
+
+### Validating the Nginx configuration
+
+```bash
+docker run --rm \
+  -v "$PWD/infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+  -v "$PWD/infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro" \
+  nginx:alpine nginx -t
+```
+
+### Validating the compose configuration
+
+```bash
+docker compose --env-file .env -f compose.yaml config
+```

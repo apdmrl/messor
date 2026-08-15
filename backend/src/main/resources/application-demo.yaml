@@ -1,0 +1,3 @@
+messor:
+  demo:
+    password: ${MESSOR_DEMO_PASSWORD}

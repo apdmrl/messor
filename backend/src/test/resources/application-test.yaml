@@ -1,0 +1,11 @@
+spring:
+  flyway:
+    enabled: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+  session:
+    jdbc:
+      initialize-schema: never
