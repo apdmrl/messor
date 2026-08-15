@@ -19,12 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration test for {@link DemoAccountInitializer}.
  *
  * <p>Runs with the {@code demo} profile enabled so the initializer seeds the
- * two demo accounts. The demo password is supplied as a test-only property
- * value via {@code MESSOR_DEMO_PASSWORD}, so the test is self-contained and
- * does not depend on the variable being set in the shell environment.</p>
+ * two demo accounts. The demo password is supplied as a test-only value for
+ * the canonical {@code messor.demo.password} property, so the test is
+ * self-contained and does not depend on the {@code MESSOR_DEMO_PASSWORD}
+ * environment variable being set in the shell environment.</p>
  */
 @ActiveProfiles({ "test", "demo" })
-@TestPropertySource(properties = "MESSOR_DEMO_PASSWORD=test-only-demo-password-42")
+@TestPropertySource(properties = "messor.demo.password=test-only-demo-password-42")
 class DemoAccountInitializerIT extends PostgresIntegrationTestSupport {
 
 	private static final String DEMO_PASSWORD = "test-only-demo-password-42";
