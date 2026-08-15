@@ -1,0 +1,62 @@
+name: messor
+
+# Production deployment. The only public entry point is the Nginx gateway on
+# the configured public port. PostgreSQL and the backend are reachable only on
+# the internal compose network. Secrets are read from .env; never commit real
+# passwords.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${MESSOR_DB_NAME:?Set MESSOR_DB_NAME in .env}
+      POSTGRES_USER: ${MESSOR_DB_USER:?Set MESSOR_DB_USER in .env}
+      POSTGRES_PASSWORD: ${MESSOR_DB_PASSWORD:?Set MESSOR_DB_PASSWORD in .env}
+    volumes:
+      - messor-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    # Not published to the host; reachable only on the internal network.
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SPRING_PROFILES_ACTIVE: ${MESSOR_SPRING_PROFILES_ACTIVE:-prod}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${MESSOR_DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${MESSOR_DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MESSOR_DB_PASSWORD}
+      MESSOR_DEMO_PASSWORD: ${MESSOR_DEMO_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/actuator/health >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # Not published to the host; public entry is via Nginx.
+
+  nginx:
+    build:
+      context: ./frontend
+    ports:
+      - "${MESSOR_PUBLIC_PORT:-80}:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  messor-postgres-data:
