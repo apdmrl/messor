@@ -116,8 +116,11 @@ frontend source code, and never commit a real or test password.
 ### One-command local demo
 
 The local demo starts PostgreSQL, the Spring Boot backend and the Nginx-served
-frontend with a single command. The only host-published port is the frontend
-gateway on `127.0.0.1:8088`.
+frontend with a single command. The frontend gateway on `127.0.0.1:8088` is the
+only HTTP/application entry point: the browser talks to a single origin that
+serves the UI and proxies `/api/` to the backend. PostgreSQL is also bound to
+the host on `127.0.0.1:${MESSOR_DB_PORT:-5432}:5432` for local development
+convenience, but it is not an application entry point.
 
 #### 1. Prepare the environment
 

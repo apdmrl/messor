@@ -3,10 +3,14 @@ name: messor-dev
 # One-command local demo environment.
 #
 # Starts PostgreSQL, the Spring Boot backend and the Nginx-served frontend.
-# The only host-published port is the frontend gateway on 127.0.0.1:8088.
-# Secrets (DB password and demo password) come only from .env; never commit
-# real passwords. This file is separate from compose.yaml and does not reuse
-# the production Nginx configuration or its rate limits.
+# The frontend gateway on 127.0.0.1:8088 is the only HTTP/application entry
+# point: the browser talks to a single origin that serves the UI and proxies
+# /api/ to the backend. PostgreSQL is also bound to the host on
+# 127.0.0.1:${MESSOR_DB_PORT:-5432}:5432 for local development convenience, but
+# it is not an application entry point. Secrets (DB password and demo password)
+# come only from .env; never commit real passwords. This file is separate from
+# compose.yaml and does not reuse the production Nginx configuration or its rate
+# limits.
 
 services:
   postgres:
