@@ -11,6 +11,7 @@ import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,9 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Runs with the {@code demo} profile enabled so the initializer seeds the
  * two demo accounts. The demo password is supplied as a test-only property
- * value via {@code MESSOR_DEMO_PASSWORD}.</p>
+ * value via {@code MESSOR_DEMO_PASSWORD}, so the test is self-contained and
+ * does not depend on the variable being set in the shell environment.</p>
  */
 @ActiveProfiles({ "test", "demo" })
+@TestPropertySource(properties = "MESSOR_DEMO_PASSWORD=test-only-demo-password-42")
 class DemoAccountInitializerIT extends PostgresIntegrationTestSupport {
 
 	private static final String DEMO_PASSWORD = "test-only-demo-password-42";
