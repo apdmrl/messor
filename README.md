@@ -81,3 +81,34 @@ React + TypeScript
 Spring Boot API
    |
    +-- PostgreSQL
+
+## Demo profile
+
+The `demo` Spring profile seeds two local demo accounts for development and
+demonstration purposes only. It is not intended for production use.
+
+| Email | Role |
+| --- | --- |
+| `admin@demo.messor.app` | `ORG_ADMIN` |
+| `member@demo.messor.app` | `USER` |
+
+Both accounts share a common password supplied through the
+`MESSOR_DEMO_PASSWORD` environment variable. If the variable is missing or
+blank, the demo profile will not start. Never hard-code the password in the
+frontend source code, and never commit a real or test password.
+
+### Running the demo profile
+
+```bash
+cp .env.example .env
+# Replace the placeholder values inside .env
+docker compose --env-file .env -f compose.dev.yaml up -d
+```
+
+```bash
+cd backend
+set -a
+. ../.env
+set +a
+SPRING_PROFILES_ACTIVE=demo ./mvnw spring-boot:run
+```

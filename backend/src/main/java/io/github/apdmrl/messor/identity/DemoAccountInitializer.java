@@ -31,6 +31,10 @@ public class DemoAccountInitializer implements ApplicationRunner {
 	public DemoAccountInitializer(UserAccountRepository repository,
 			PasswordEncoder passwordEncoder,
 			@Value("${messor.demo.password}") String demoPassword) {
+		if (demoPassword == null || demoPassword.isBlank()) {
+			throw new IllegalStateException(
+					"MESSOR_DEMO_PASSWORD is required when the demo profile is active");
+		}
 		this.repository = repository;
 		this.passwordEncoder = passwordEncoder;
 		this.demoPassword = demoPassword;
