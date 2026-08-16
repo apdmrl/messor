@@ -184,18 +184,25 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void memberCannotManageMembersReturns403() throws Exception {
+	void memberCanListButCannotManageMembers() throws Exception {
 		LoginSession admin = login("membership-member-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MMEMB1", "Member project");
 
 		LoginSession member = login("membership-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(get("/api/projects/{key}/members", key).cookie(member.session()))
-				.andExpect(status().isForbidden())
-				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
-				.andExpect(jsonPath("$.code").value("FORBIDDEN"));
+		// A MEMBER may read the member list (READ permission) and receives safe DTOs.
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(member.session()))
+				.andExpect(status().isOk())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andReturn();
+		JsonNode listBody = objectMapper.readTree(list.getResponse().getContentAsString());
+		assertThat(listBody.size()).isEqualTo(2);
+		assertThat(list.getResponse().getContentAsString())
+				.doesNotContain("passwordHash", "status", "organizationRole",
+						"userAccount", "projectId", "membershipId", "createdAt", "updatedAt");
 
+		// But a MEMBER may not mutate memberships.
 		mockMvc.perform(post("/api/projects/{key}/members", key)
 				.cookie(member.session())
 				.contentType(MediaType.APPLICATION_JSON)
@@ -209,14 +216,32 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void viewerCannotManageMembersReturns403() throws Exception {
+	void viewerCanListButCannotManageMembers() throws Exception {
 		LoginSession admin = login("membership-viewer-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MVIEW1", "Viewer project");
 
 		LoginSession viewer = login("membership-viewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(get("/api/projects/{key}/members", key).cookie(viewer.session()))
+		// A VIEWER may read the member list (READ permission) and receives safe DTOs.
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(viewer.session()))
+				.andExpect(status().isOk())
+				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+				.andReturn();
+		JsonNode listBody = objectMapper.readTree(list.getResponse().getContentAsString());
+		assertThat(listBody.size()).isEqualTo(2);
+		assertThat(list.getResponse().getContentAsString())
+				.doesNotContain("passwordHash", "status", "organizationRole",
+						"userAccount", "projectId", "membershipId", "createdAt", "updatedAt");
+
+		// But a VIEWER may not mutate memberships.
+		mockMvc.perform(post("/api/projects/{key}/members", key)
+				.cookie(viewer.session())
+				.contentType(MediaType.APPLICATION_JSON)
+				.header(viewer.csrfHeader(), viewer.csrfToken())
+				.content("""
+						{"email":"someone@example.com","role":"MEMBER"}
+						"""))
 				.andExpect(status().isForbidden())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("FORBIDDEN"));
@@ -543,6 +568,39 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
+	void leadCanBeRemovedWhenAnotherLeadRemains() throws Exception {
+		LoginSession admin = login("membership-removelead-admin@example.com", UserRole.ORG_ADMIN);
+		String key = createProject(admin, "MRMLD1", "Remove lead project");
+
+		LoginSession secondLead = login("membership-removelead@example.com", UserRole.USER);
+		addMember(key, secondLead.userId(), "PROJECT_LEAD");
+
+		// Two PROJECT_LEAD memberships exist. Remove the second lead with the
+		// correct expectedVersion; the creator lead remains.
+		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, secondLead.userId())
+				.cookie(admin.session())
+				.header(admin.csrfHeader(), admin.csrfToken())
+				.param("expectedVersion", "0"))
+				.andExpect(status().isNoContent());
+
+		// The deleted membership is absent.
+		Long remaining = jdbcTemplate.queryForObject(
+				"SELECT count(*) FROM project_member pm"
+						+ " JOIN project p ON p.id = pm.project_id"
+						+ " WHERE p.key = ? AND pm.user_account_id = ?",
+				Long.class, key, secondLead.userId());
+		assertThat(remaining).isZero();
+
+		// The other PROJECT_LEAD remains.
+		Long leadCount = jdbcTemplate.queryForObject(
+				"SELECT count(*) FROM project_member pm"
+						+ " JOIN project p ON p.id = pm.project_id"
+						+ " WHERE p.key = ? AND pm.role = 'PROJECT_LEAD'",
+				Long.class, key);
+		assertThat(leadCount).isEqualTo(1L);
+	}
+
+	@Test
 	void stalePatchAndDeleteReturn409VersionConflict() throws Exception {
 		LoginSession admin = login("membership-stale-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MSTAL1", "Stale project");
@@ -630,13 +688,14 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void unrelatedIntegrityViolationIsNotLabeledMemberAlreadyExists() throws Exception {
+	void invalidRoleEnumIsRejectedDuringDeserialization() throws Exception {
 		LoginSession admin = login("membership-unrelated-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MUNRL1", "Unrelated project");
 
-		// Attempt to add a member with a role that violates the DB check
-		// constraint (not the unique project/user constraint). This must not be
-		// reported as MEMBER_ALREADY_EXISTS.
+		// An unknown role value is rejected during JSON deserialization, before
+		// the membership service or database is reached. This is a validation
+		// test only; database constraint classification is covered by
+		// ProjectMemberServiceTest.
 		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key)
 				.cookie(admin.session())
 				.contentType(MediaType.APPLICATION_JSON)

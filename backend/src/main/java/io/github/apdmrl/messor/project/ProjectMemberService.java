@@ -45,8 +45,11 @@ public class ProjectMemberService {
 
 	@Transactional(readOnly = true)
 	public List<ProjectMemberResponse> list(String projectKey, MessorUserPrincipal principal) {
+		// Reading the member list requires only READ so that MEMBER and VIEWER
+		// roles can see who is on the project; mutations still require
+		// MANAGE_MEMBERS.
 		ProjectAccess access = authorizationService.requireProject(
-				projectKey, principal, ProjectPermission.MANAGE_MEMBERS);
+				projectKey, principal, ProjectPermission.READ);
 		return memberRepository.findAllByProjectIdOrderByUserEmailAsc(access.project().getId())
 				.stream()
 				.map(ProjectMemberResponse::of)
