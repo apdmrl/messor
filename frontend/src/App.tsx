@@ -1,22 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
+import { RouterProvider } from 'react-router-dom'
 import { getCurrentUser, logout } from './features/auth/authApi'
-import { LoginPage } from './features/auth/LoginPage'
 import type { UserSummary } from './features/auth/types'
+import { AppProviders } from './app/AppProviders'
+import { router } from './app/router'
+import { SessionContext } from './app/session'
+import type { SessionState } from './app/session'
 import './App.css'
-
-type SessionState =
-  | { status: 'loading' }
-  | { status: 'anonymous' }
-  | { status: 'authenticated'; user: UserSummary }
-  | { status: 'error' }
 
 const BOOTSTRAP_ERROR_MESSAGE = 'Oturum durumu alınamadı.'
 const LOGOUT_ERROR_MESSAGE = 'Çıkış yapılamadı. Lütfen tekrar deneyin.'
-
-function roleLabel(role: UserSummary['role']): string {
-  return role === 'ORG_ADMIN' ? 'Organizasyon yöneticisi' : 'Üye'
-}
 
 function App(): ReactElement {
   const [session, setSession] = useState<SessionState>({ status: 'loading' })
@@ -53,11 +47,11 @@ function App(): ReactElement {
     return bootstrap()
   }, [bootstrap])
 
-  function handleAuthenticated(user: UserSummary): void {
+  const handleAuthenticated = useCallback((user: UserSummary): void => {
     setSession({ status: 'authenticated', user })
-  }
+  }, [])
 
-  async function handleLogout(): Promise<void> {
+  const handleLogout = useCallback(async (): Promise<void> => {
     if (logoutPending) {
       return
     }
@@ -71,7 +65,26 @@ function App(): ReactElement {
     } finally {
       setLogoutPending(false)
     }
-  }
+  }, [logoutPending])
+
+  const sessionValue = useMemo(
+    () => ({
+      session,
+      bootstrap,
+      handleAuthenticated,
+      handleLogout,
+      logoutPending,
+      logoutError,
+    }),
+    [
+      session,
+      bootstrap,
+      handleAuthenticated,
+      handleLogout,
+      logoutPending,
+      logoutError,
+    ],
+  )
 
   if (session.status === 'loading') {
     return (
@@ -98,49 +111,12 @@ function App(): ReactElement {
     )
   }
 
-  if (session.status === 'anonymous') {
-    return <LoginPage onAuthenticated={handleAuthenticated} />
-  }
-
-  const { user } = session
-
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-header__brand">
-          <span className="app-header__mark" aria-hidden="true" />
-          <h1 className="app-header__name">Messor</h1>
-        </div>
-        <div className="app-header__user">
-          <span className="app-header__identity">
-            {user.firstName} {user.lastName}
-          </span>
-          <span className="app-header__email">{user.email}</span>
-          <span className="app-header__role">{roleLabel(user.role)}</span>
-        </div>
-        <button
-          type="button"
-          className="app-header__logout"
-          onClick={handleLogout}
-          disabled={logoutPending}
-        >
-          {logoutPending ? 'Çıkış yapılıyor…' : 'Çıkış yap'}
-        </button>
-      </header>
-
-      {logoutError !== null && (
-        <p className="app-shell__error" role="alert">
-          {logoutError}
-        </p>
-      )}
-
-      <main className="app-content">
-        <h1 className="app-content__heading">Görev alanı</h1>
-        <p className="app-content__placeholder">
-          Görevlerin burada görünecek. Yakında.
-        </p>
-      </main>
-    </div>
+    <AppProviders>
+      <SessionContext.Provider value={sessionValue}>
+        <RouterProvider router={router} />
+      </SessionContext.Provider>
+    </AppProviders>
   )
 }
 

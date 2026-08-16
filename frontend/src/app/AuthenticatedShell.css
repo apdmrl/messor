@@ -1,0 +1,189 @@
+/* ============================================================
+   AuthenticatedShell — application shell, navigation, user info
+   Mobile-first.
+   ============================================================ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem 1.25rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid rgba(31, 42, 36, 0.1);
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-header__mark {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.app-header__name {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+/* ---------- Navigation ---------- */
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.app-nav__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 0.875rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-decoration: none;
+  border-radius: 0.5rem;
+}
+
+.app-nav__link:hover {
+  color: var(--color-ink);
+  background: rgba(31, 42, 36, 0.05);
+}
+
+.app-nav__link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.app-nav__link--active {
+  color: var(--color-primary-strong);
+  background: rgba(47, 93, 80, 0.12);
+}
+
+/* ---------- User info ---------- */
+.app-header__user {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-header__identity {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.app-header__email {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.app-header__role {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary-strong);
+  background: rgba(47, 93, 80, 0.12);
+  border-radius: 999px;
+}
+
+.app-header__logout {
+  min-height: 44px;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-danger);
+  background: transparent;
+  border: 1px solid rgba(163, 58, 50, 0.4);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.app-header__logout:hover:not(:disabled) {
+  background: rgba(163, 58, 50, 0.08);
+}
+
+.app-header__logout:focus-visible {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
+}
+
+.app-header__logout:disabled {
+  color: var(--color-muted);
+  border-color: rgba(31, 42, 36, 0.2);
+  cursor: not-allowed;
+}
+
+.app-shell__error {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--color-danger);
+  background: rgba(163, 58, 50, 0.08);
+  border-bottom: 1px solid rgba(163, 58, 50, 0.2);
+}
+
+.app-content {
+  flex: 1 1 auto;
+  padding: 2rem 1.25rem;
+}
+
+/* ============================================================
+   Tablet — 768px and up
+   ============================================================ */
+@media (min-width: 768px) {
+  .app-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 2rem;
+  }
+
+  .app-header__user {
+    margin-left: auto;
+    margin-right: 1.5rem;
+    text-align: right;
+  }
+
+  .app-header__role {
+    align-self: flex-end;
+  }
+
+  .app-content {
+    padding: 3rem 2rem;
+  }
+}
+
+/* ============================================================
+   Reduced motion
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .app-nav__link,
+  .app-header__logout {
+    transition: none;
+  }
+}

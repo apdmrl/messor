@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuthApiError } from './features/auth/authApi'
 import type { UserSummary } from './features/auth/types'
+import type { PageResponse, ProjectSummary } from './features/projects/types'
 
 const adminUser: UserSummary = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -21,6 +22,14 @@ const memberUser: UserSummary = {
   role: 'USER',
 }
 
+const emptyProjects: PageResponse<ProjectSummary> = {
+  items: [],
+  page: 0,
+  size: 100,
+  totalItems: 0,
+  totalPages: 0,
+}
+
 vi.mock('./features/auth/authApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./features/auth/authApi')>()
   return {
@@ -31,18 +40,39 @@ vi.mock('./features/auth/authApi', async (importOriginal) => {
   }
 })
 
+vi.mock('./features/projects/projectsApi', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('./features/projects/projectsApi')
+  >()
+  return {
+    ...actual,
+    listProjects: vi.fn(),
+    createProject: vi.fn(),
+  }
+})
+
 import { getCurrentUser, login, logout } from './features/auth/authApi'
+import { listProjects } from './features/projects/projectsApi'
 import App from './App'
 
 const getCurrentUserMock = getCurrentUser as Mock
 const loginMock = login as Mock
 const logoutMock = logout as Mock
+const listProjectsMock = listProjects as Mock
 
-describe('App session state', () => {
+function renderAt(path: string): void {
+  window.history.pushState({}, '', path)
+  render(<App />)
+}
+
+describe('App session state and routing', () => {
   beforeEach(() => {
     getCurrentUserMock.mockReset()
     loginMock.mockReset()
     logoutMock.mockReset()
+    listProjectsMock.mockReset()
+    listProjectsMock.mockResolvedValue(emptyProjects)
+    window.history.pushState({}, '', '/')
   })
 
   afterEach(() => {
@@ -54,20 +84,44 @@ describe('App session state', () => {
       getCurrentUserMock.mockImplementation(
         () => new Promise<UserSummary | null>(() => {}),
       )
-      render(<App />)
+      renderAt('/projects')
 
       expect(
         screen.getByText('Oturum kontrol ediliyor…'),
       ).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Oturum aç' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Çıkış yap' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Oturum aç' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Çıkış yap' }),
+      ).not.toBeInTheDocument()
     })
   })
 
   describe('anonymous bootstrap', () => {
     it('shows the login page when getCurrentUser resolves null', async () => {
       getCurrentUserMock.mockResolvedValue(null)
-      render(<App />)
+      renderAt('/projects')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('protected route redirect', () => {
+    it('redirects an anonymous user from /projects to /login', async () => {
+      getCurrentUserMock.mockResolvedValue(null)
+      renderAt('/projects')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
+      ).toBeInTheDocument()
+    })
+
+    it('redirects an anonymous user from /my-work to /login', async () => {
+      getCurrentUserMock.mockResolvedValue(null)
+      renderAt('/my-work')
 
       expect(
         await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
@@ -78,7 +132,7 @@ describe('App session state', () => {
   describe('authenticated bootstrap', () => {
     it('shows the authenticated shell with user details and logout', async () => {
       getCurrentUserMock.mockResolvedValue(adminUser)
-      render(<App />)
+      renderAt('/projects')
 
       expect(
         await screen.findByRole('heading', { name: 'Messor', level: 1 }),
@@ -100,10 +154,44 @@ describe('App session state', () => {
 
     it('shows the Üye role label for a USER', async () => {
       getCurrentUserMock.mockResolvedValue(memberUser)
-      render(<App />)
+      renderAt('/projects')
 
       expect(await screen.findByText('Grace Hopper')).toBeInTheDocument()
       expect(screen.getByText('Üye')).toBeInTheDocument()
+    })
+  })
+
+  describe('authenticated /login redirect', () => {
+    it('redirects an authenticated user from /login to /projects', async () => {
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      renderAt('/login')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Messor', level: 1 }),
+      ).toBeInTheDocument()
+      expect(
+        await screen.findByRole('heading', { name: 'Projeler', level: 2 }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('root route redirect', () => {
+    it('redirects an anonymous user from / to /login', async () => {
+      getCurrentUserMock.mockResolvedValue(null)
+      renderAt('/')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
+      ).toBeInTheDocument()
+    })
+
+    it('redirects an authenticated user from / to /projects', async () => {
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      renderAt('/')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Projeler', level: 2 }),
+      ).toBeInTheDocument()
     })
   })
 
@@ -113,7 +201,7 @@ describe('App session state', () => {
         .mockRejectedValueOnce(new Error('internal bootstrap secret'))
         .mockResolvedValueOnce(memberUser)
       const user = userEvent.setup()
-      render(<App />)
+      renderAt('/projects')
 
       expect(
         await screen.findByText('Oturum durumu alınamadı.'),
@@ -135,7 +223,7 @@ describe('App session state', () => {
       getCurrentUserMock.mockResolvedValue(null)
       loginMock.mockResolvedValue(adminUser)
       const user = userEvent.setup()
-      render(<App />)
+      renderAt('/login')
 
       await screen.findByRole('heading', { name: 'Oturum aç', level: 2 })
 
@@ -150,6 +238,25 @@ describe('App session state', () => {
     })
   })
 
+  describe('shell navigation', () => {
+    it('navigates between Projects and My Work via the nav links', async () => {
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      const user = userEvent.setup()
+      renderAt('/projects')
+
+      await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+      await user.click(screen.getByRole('link', { name: 'Görevlerim' }))
+
+      expect(
+        await screen.findByRole('heading', { name: 'Görevlerim', level: 2 }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Görevlerim ekranı sonraki pakette tamamlanacak.'),
+      ).toBeInTheDocument()
+    })
+  })
+
   describe('logout success', () => {
     it('disables the button while logging out and returns to login', async () => {
       getCurrentUserMock.mockResolvedValue(adminUser)
@@ -161,7 +268,7 @@ describe('App session state', () => {
           }),
       )
       const user = userEvent.setup()
-      render(<App />)
+      renderAt('/projects')
 
       await screen.findByRole('heading', { name: 'Messor', level: 1 })
 
@@ -187,7 +294,7 @@ describe('App session state', () => {
         new AuthApiError(500, 'INTERNAL', 'internal logout secret'),
       )
       const user = userEvent.setup()
-      render(<App />)
+      renderAt('/projects')
 
       await screen.findByRole('heading', { name: 'Messor', level: 1 })
 
@@ -207,6 +314,18 @@ describe('App session state', () => {
       expect(
         screen.getByRole('heading', { name: 'Messor', level: 1 }),
       ).toBeInTheDocument()
+    })
+  })
+
+  describe('no browser storage writes', () => {
+    it('never writes auth/session/CSRF data to localStorage or sessionStorage', async () => {
+      const storageSet = vi.spyOn(Storage.prototype, 'setItem')
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      renderAt('/projects')
+
+      await screen.findByRole('heading', { name: 'Messor', level: 1 })
+
+      expect(storageSet).not.toHaveBeenCalled()
     })
   })
 })
