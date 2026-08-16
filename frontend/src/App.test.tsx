@@ -30,6 +30,44 @@ const emptyProjects: PageResponse<ProjectSummary> = {
   totalPages: 0,
 }
 
+const adminProjects: PageResponse<ProjectSummary> = {
+  items: [
+    {
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      key: 'ALPHA',
+      name: 'Alpha Project',
+      description: 'Alpha description',
+      currentUserRole: 'PROJECT_LEAD',
+      version: 1,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  ],
+  page: 0,
+  size: 100,
+  totalItems: 1,
+  totalPages: 1,
+}
+
+const memberProjects: PageResponse<ProjectSummary> = {
+  items: [
+    {
+      id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      key: 'BETA',
+      name: 'Beta Project',
+      description: 'Beta description',
+      currentUserRole: 'MEMBER',
+      version: 1,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  ],
+  page: 0,
+  size: 100,
+  totalItems: 1,
+  totalPages: 1,
+}
+
 vi.mock('./features/auth/authApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./features/auth/authApi')>()
   return {
@@ -314,6 +352,57 @@ describe('App session state and routing', () => {
       expect(
         screen.getByRole('heading', { name: 'Messor', level: 1 }),
       ).toBeInTheDocument()
+    })
+  })
+
+  describe('query cache isolation across authentication boundaries', () => {
+    it('never renders the previous user\'s cached projects after logout and re-login', async () => {
+      // User A bootstraps and their projects are cached and rendered.
+      getCurrentUserMock.mockResolvedValueOnce(adminUser)
+      listProjectsMock.mockResolvedValueOnce(adminProjects)
+      const user = userEvent.setup()
+      renderAt('/projects')
+
+      expect(await screen.findByText('Alpha Project')).toBeInTheDocument()
+      expect(screen.getByText('Alpha description')).toBeInTheDocument()
+
+      // User A logs out successfully.
+      logoutMock.mockResolvedValueOnce(undefined)
+      await user.click(screen.getByRole('button', { name: 'Çıkış yap' }))
+      await screen.findByRole('heading', { name: 'Oturum aç', level: 2 })
+
+      // User B logs in; their projects request stays pending.
+      loginMock.mockResolvedValueOnce(memberUser)
+      let resolveMemberProjects: (value: PageResponse<ProjectSummary>) => void =
+        () => {}
+      listProjectsMock.mockImplementationOnce(
+        () =>
+          new Promise<PageResponse<ProjectSummary>>((resolve) => {
+            resolveMemberProjects = resolve
+          }),
+      )
+
+      await user.type(
+        screen.getByLabelText('E-posta'),
+        'member@demo.messor.app',
+      )
+      await user.type(screen.getByLabelText('Parola'), 'correct-password')
+      await user.click(screen.getByRole('button', { name: 'Oturum aç' }))
+
+      // User B's shell is shown while their projects request is pending.
+      await screen.findByRole('heading', { name: 'Messor', level: 1 })
+
+      // User A's cached project data must be absent throughout the pending request.
+      expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument()
+      expect(screen.queryByText('Alpha description')).not.toBeInTheDocument()
+
+      // User B's projects appear once the request resolves.
+      resolveMemberProjects(memberProjects)
+
+      expect(await screen.findByText('Beta Project')).toBeInTheDocument()
+      expect(screen.getByText('Beta description')).toBeInTheDocument()
+      expect(screen.queryByText('Alpha Project')).not.toBeInTheDocument()
+      expect(screen.queryByText('Alpha description')).not.toBeInTheDocument()
     })
   })
 
