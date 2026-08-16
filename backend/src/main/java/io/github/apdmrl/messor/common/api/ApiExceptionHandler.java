@@ -10,11 +10,14 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
@@ -28,7 +31,8 @@ public class ApiExceptionHandler {
 	private static final String CODE_VALIDATION_FAILED = "VALIDATION_FAILED";
 	private static final String CODE_VERSION_CONFLICT = "VERSION_CONFLICT";
 	private static final String CODE_PROJECT_KEY_ALREADY_EXISTS = "PROJECT_KEY_ALREADY_EXISTS";
-	private static final String CODE_INTERNAL = "INTERNAL_ERROR";
+	private static final String CODE_METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED";
+	private static final String CODE_CONFLICT = "CONFLICT";
 
 	@ExceptionHandler(ApiProblemException.class)
 	public ResponseEntity<ProblemDetail> handleApiProblem(ApiProblemException ex,
@@ -66,8 +70,31 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ResponseEntity<ProblemDetail> handleDataIntegrityViolation(
 			DataIntegrityViolationException ex, HttpServletRequest request) {
-		return problemResponse(problem(HttpStatus.CONFLICT, CODE_PROJECT_KEY_ALREADY_EXISTS,
-				"Bu proje anahtarı zaten kullanılıyor.", request));
+		// The project key unique constraint is detected and translated to
+		// PROJECT_KEY_ALREADY_EXISTS inside ProjectService.create. Any other
+		// integrity violation (e.g. a future membership constraint) fails
+		// closed to a generic conflict rather than guessing a domain reason.
+		return problemResponse(problem(HttpStatus.CONFLICT, CODE_CONFLICT,
+				"Kaynak durumu istekle çakışıyor.", request));
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<ProblemDetail> handleHttpMessageNotReadable(
+			HttpMessageNotReadableException ex, HttpServletRequest request) {
+		return validationFailed(request);
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ProblemDetail> handleMethodArgumentTypeMismatch(
+			MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+		return validationFailed(request);
+	}
+
+	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+	public ResponseEntity<ProblemDetail> handleHttpRequestMethodNotSupported(
+			HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+		return problemResponse(problem(HttpStatus.METHOD_NOT_ALLOWED, CODE_METHOD_NOT_ALLOWED,
+				"Bu HTTP metodu desteklenmiyor.", request));
 	}
 
 	@ExceptionHandler(NoResourceFoundException.class)
@@ -75,13 +102,6 @@ public class ApiExceptionHandler {
 			HttpServletRequest request) {
 		return problemResponse(problem(HttpStatus.NOT_FOUND, "NOT_FOUND",
 				"Kaynak bulunamadı.", request));
-	}
-
-	@ExceptionHandler(Exception.class)
-	public ResponseEntity<ProblemDetail> handleUnexpected(Exception ex,
-			HttpServletRequest request) {
-		return problemResponse(problem(HttpStatus.INTERNAL_SERVER_ERROR, CODE_INTERNAL,
-				"Beklenmeyen bir hata oluştu.", request));
 	}
 
 	private ResponseEntity<ProblemDetail> validationFailed(HttpServletRequest request) {

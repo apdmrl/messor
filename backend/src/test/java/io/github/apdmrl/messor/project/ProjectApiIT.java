@@ -2,6 +2,7 @@ package io.github.apdmrl.messor.project;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -563,6 +564,61 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		String raw = result.getResponse().getContentAsString();
 		assertThat(raw).doesNotContain("exception", "stackTrace", "trace", "SQL", "constraint");
 		assertThat(result.getResponse().getHeader("Cache-Control")).contains("no-store");
+	}
+
+	@Test
+	void createProjectWithMalformedJsonReturns400ValidationFailed() throws Exception {
+		LoginSession admin = login("malformed-json@example.com", UserRole.ORG_ADMIN);
+
+		MvcResult result = mockMvc.perform(post("/api/projects")
+				.cookie(admin.session())
+				.contentType(MediaType.APPLICATION_JSON)
+				.header(admin.csrfHeader(), admin.csrfToken())
+				.content("""
+						{"key":"MALF01","name":
+						"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andReturn();
+
+		JsonNode body = problemBody(result);
+		assertThat(body.get("code").asText()).isEqualTo("VALIDATION_FAILED");
+		assertThat(body.get("status").asInt()).isEqualTo(400);
+
+		String raw = result.getResponse().getContentAsString();
+		assertThat(raw).doesNotContain("exception", "stackTrace", "trace", "SQL", "constraint");
+	}
+
+	@Test
+	void listProjectsRejectsNonNumericPageReturns400() throws Exception {
+		LoginSession admin = login("bad-page@example.com", UserRole.ORG_ADMIN);
+
+		MvcResult result = mockMvc.perform(get("/api/projects")
+				.cookie(admin.session())
+				.param("page", "abc"))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andReturn();
+
+		JsonNode body = problemBody(result);
+		assertThat(body.get("code").asText()).isEqualTo("VALIDATION_FAILED");
+		assertThat(body.get("status").asInt()).isEqualTo(400);
+	}
+
+	@Test
+	void unsupportedProjectHttpMethodReturns405MethodNotAllowed() throws Exception {
+		LoginSession admin = login("bad-method@example.com", UserRole.ORG_ADMIN);
+
+		MvcResult result = mockMvc.perform(delete("/api/projects")
+				.cookie(admin.session())
+				.header(admin.csrfHeader(), admin.csrfToken()))
+				.andExpect(status().isMethodNotAllowed())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andReturn();
+
+		JsonNode body = problemBody(result);
+		assertThat(body.get("code").asText()).isEqualTo("METHOD_NOT_ALLOWED");
+		assertThat(body.get("status").asInt()).isEqualTo(405);
 	}
 
 	// --- Helpers ---

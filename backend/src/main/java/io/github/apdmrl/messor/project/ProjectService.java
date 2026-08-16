@@ -12,6 +12,7 @@ import io.github.apdmrl.messor.identity.UserRole;
 
 import jakarta.persistence.EntityManager;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -73,19 +74,51 @@ public class ProjectService {
 						"UNAUTHENTICATED", "Oturum açmanız gerekiyor."));
 
 		Project project = Project.create(normalizedKey, request.name(), request.description(), creator);
-		projectRepository.save(project);
 
-		memberRepository.save(ProjectMember.create(project, creator, ProjectRole.PROJECT_LEAD));
+		try {
+			projectRepository.save(project);
 
-		statusRepository.save(WorkflowStatus.create(project, "TO_DO", "Yapılacak", 0));
-		statusRepository.save(WorkflowStatus.create(project, "IN_PROGRESS", "Devam Ediyor", 1));
-		statusRepository.save(WorkflowStatus.create(project, "DONE", "Tamamlandı", 2));
+			memberRepository.save(ProjectMember.create(project, creator, ProjectRole.PROJECT_LEAD));
 
-		// Flush so @PrePersist populates createdAt/updatedAt before the response
-		// is built. The whole operation remains a single transaction.
-		entityManager.flush();
+			statusRepository.save(WorkflowStatus.create(project, "TO_DO", "Yapılacak", 0));
+			statusRepository.save(WorkflowStatus.create(project, "IN_PROGRESS", "Devam Ediyor", 1));
+			statusRepository.save(WorkflowStatus.create(project, "DONE", "Tamamlandı", 2));
+
+			// Flush so @PrePersist populates createdAt/updatedAt before the
+			// response is built. The whole operation remains a single
+			// transaction; a constraint violation surfaces here.
+			entityManager.flush();
+		}
+		catch (DataIntegrityViolationException ex) {
+			if (isProjectKeyUniqueViolation(ex)) {
+				throw new ApiProblemException(HttpStatus.CONFLICT, "PROJECT_KEY_ALREADY_EXISTS",
+						"Bu proje anahtarı zaten kullanılıyor.");
+			}
+			// Any other integrity violation is rethrown so the global handler
+			// reports a generic conflict instead of guessing a domain reason.
+			throw ex;
+		}
 
 		return toDetail(project, ProjectRole.PROJECT_LEAD);
+	}
+
+	/**
+		* Returns {@code true} only when the cause chain of the given integrity
+		* violation is the project key unique constraint ({@code uq_project_key})
+		* from the V3 migration. The constraint name is read from Hibernate's
+		* structured {@code ConstraintViolationException} rather than by searching
+		* a localized message, so unrelated constraints are never mislabeled.
+		*/
+	private boolean isProjectKeyUniqueViolation(DataIntegrityViolationException ex) {
+		Throwable cause = ex;
+		while (cause != null) {
+			if (cause instanceof org.hibernate.exception.ConstraintViolationException cve
+					&& "uq_project_key".equals(cve.getConstraintName())) {
+				return true;
+			}
+			cause = cause.getCause();
+		}
+		return false;
 	}
 
 	@Transactional(readOnly = true)
