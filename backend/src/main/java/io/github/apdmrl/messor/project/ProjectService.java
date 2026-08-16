@@ -1,7 +1,6 @@
 package io.github.apdmrl.messor.project;
 
 import java.util.List;
-import java.util.Optional;
 
 import io.github.apdmrl.messor.common.api.ApiProblemException;
 import io.github.apdmrl.messor.common.api.PageResponse;
@@ -26,31 +25,31 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Project creation is a single transaction that persists the project, the
  * creator's {@code PROJECT_LEAD} membership, and exactly three default workflow
- * statuses atomically. Object-level authorization is enforced here with focused
- * private helpers; a central authorization service is introduced in a later
- * task.</p>
+ * statuses atomically. Object-level authorization for existing projects is
+ * delegated to the focused {@link ProjectAuthorizationService}; this service
+ * holds no duplicated authorization helpers.</p>
  */
 @Service
 public class ProjectService {
-
-	private static final List<String> ALLOWED_SORT_FIELDS =
-			List.of("key", "name", "createdAt", "updatedAt");
 
 	private final ProjectRepository projectRepository;
 	private final ProjectMemberRepository memberRepository;
 	private final WorkflowStatusRepository statusRepository;
 	private final UserAccountRepository userAccountRepository;
+	private final ProjectAuthorizationService authorizationService;
 	private final EntityManager entityManager;
 
 	public ProjectService(ProjectRepository projectRepository,
 			ProjectMemberRepository memberRepository,
 			WorkflowStatusRepository statusRepository,
 			UserAccountRepository userAccountRepository,
+			ProjectAuthorizationService authorizationService,
 			EntityManager entityManager) {
 		this.projectRepository = projectRepository;
 		this.memberRepository = memberRepository;
 		this.statusRepository = statusRepository;
 		this.userAccountRepository = userAccountRepository;
+		this.authorizationService = authorizationService;
 		this.entityManager = entityManager;
 	}
 
@@ -103,12 +102,12 @@ public class ProjectService {
 	}
 
 	/**
-		* Returns {@code true} only when the cause chain of the given integrity
-		* violation is the project key unique constraint ({@code uq_project_key})
-		* from the V3 migration. The constraint name is read from Hibernate's
-		* structured {@code ConstraintViolationException} rather than by searching
-		* a localized message, so unrelated constraints are never mislabeled.
-		*/
+	 * Returns {@code true} only when the cause chain of the given integrity
+	 * violation is the project key unique constraint ({@code uq_project_key})
+	 * from the V3 migration. The constraint name is read from Hibernate's
+	 * structured {@code ConstraintViolationException} rather than by searching
+	 * a localized message, so unrelated constraints are never mislabeled.
+	 */
 	private boolean isProjectKeyUniqueViolation(DataIntegrityViolationException ex) {
 		Throwable cause = ex;
 		while (cause != null) {
@@ -144,66 +143,24 @@ public class ProjectService {
 
 	@Transactional(readOnly = true)
 	public ProjectDetailResponse get(String projectKey, MessorUserPrincipal principal) {
-		Project project = requireVisibleProject(projectKey, principal);
-		return toDetail(project, roleFor(project, principal));
+		ProjectAccess access = authorizationService.requireProject(
+				projectKey, principal, ProjectPermission.READ);
+		return toDetail(access.project(), access.effectiveRole());
 	}
 
 	@Transactional
 	public ProjectDetailResponse update(String projectKey, UpdateProjectRequest request,
 			MessorUserPrincipal principal) {
-		Project project = requireManageableProject(projectKey, principal);
+		ProjectAccess access = authorizationService.requireProject(
+				projectKey, principal, ProjectPermission.MANAGE_PROJECT);
+		Project project = access.project();
 		if (request.expectedVersion() != project.getVersion()) {
 			throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
 					"Kayıt başka bir işlem tarafından güncellendi.");
 		}
 		project.update(request.name(), request.description());
 		projectRepository.save(project);
-		return toDetail(project, roleFor(project, principal));
-	}
-
-	/**
-	 * Returns the project only if the principal may read it (ORG_ADMIN or a
-	 * member). Nonmembers and unknown keys both yield {@code 404} to avoid
-	 * identifier disclosure.
-	 */
-	private Project requireVisibleProject(String projectKey, MessorUserPrincipal principal) {
-		Optional<Project> project = projectRepository.findByKey(projectKey);
-		if (project.isEmpty()) {
-			throw notFound();
-		}
-		if (principal.getRole() == UserRole.ORG_ADMIN || isMember(project.get(), principal)) {
-			return project.get();
-		}
-		throw notFound();
-	}
-
-	/**
-	 * Returns the project only if the principal may manage its metadata
-	 * (ORG_ADMIN or PROJECT_LEAD). Nonmembers and unknown keys yield
-	 * {@code 404}; known members with insufficient role yield {@code 403}.
-	 */
-	private Project requireManageableProject(String projectKey, MessorUserPrincipal principal) {
-		Optional<Project> project = projectRepository.findByKey(projectKey);
-		if (project.isEmpty()) {
-			throw notFound();
-		}
-		if (principal.getRole() == UserRole.ORG_ADMIN) {
-			return project.get();
-		}
-		Optional<ProjectMember> membership = memberRepository
-				.findByProjectIdAndUserId(project.get().getId(), principal.getId());
-		if (membership.isEmpty()) {
-			throw notFound();
-		}
-		if (membership.get().getRole() != ProjectRole.PROJECT_LEAD) {
-			throw new ApiProblemException(HttpStatus.FORBIDDEN, "FORBIDDEN",
-					"Bu işlem için yetkiniz yok.");
-		}
-		return project.get();
-	}
-
-	private boolean isMember(Project project, MessorUserPrincipal principal) {
-		return memberRepository.findByProjectIdAndUserId(project.getId(), principal.getId()).isPresent();
+		return toDetail(project, access.effectiveRole());
 	}
 
 	private ProjectRole roleFor(Project project, MessorUserPrincipal principal) {
@@ -222,11 +179,6 @@ public class ProjectService {
 				.map(WorkflowStatusResponse::from)
 				.toList();
 		return ProjectDetailResponse.of(project, role, statuses);
-	}
-
-	private ApiProblemException notFound() {
-		return new ApiProblemException(HttpStatus.NOT_FOUND, "PROJECT_NOT_FOUND",
-				"Proje bulunamadı.");
 	}
 
 }

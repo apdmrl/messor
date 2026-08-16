@@ -52,6 +52,8 @@ class ProjectServiceTest {
 	@Mock
 	private UserAccountRepository userAccountRepository;
 	@Mock
+	private ProjectAuthorizationService authorizationService;
+	@Mock
 	private EntityManager entityManager;
 
 	private ProjectService service;
@@ -62,7 +64,7 @@ class ProjectServiceTest {
 	@BeforeEach
 	void setUp() {
 		service = new ProjectService(projectRepository, memberRepository, statusRepository,
-				userAccountRepository, entityManager);
+				userAccountRepository, authorizationService, entityManager);
 		creator = UserAccount.create("creator@demo.messor.app", "stored-hash",
 				"Creator", "User", UserRole.USER);
 		principal = MessorUserPrincipal.from(creator);

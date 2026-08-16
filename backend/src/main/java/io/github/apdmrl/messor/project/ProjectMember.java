@@ -62,6 +62,18 @@ public class ProjectMember {
 		return member;
 	}
 
+	/**
+	 * Changes this member's role. Business rules such as the final-lead
+	 * invariant are enforced by the application service before this method is
+	 * invoked; this method only mutates the domain state.
+	 */
+	public void changeRole(ProjectRole newRole) {
+		if (newRole == null) {
+			throw new IllegalArgumentException("role must not be null");
+		}
+		this.role = newRole;
+	}
+
 	public UUID getId() {
 		return id;
 	}
