@@ -34,3 +34,22 @@ export interface CreateProjectInput {
   name: string
   description?: string
 }
+
+export interface ProjectMember {
+  userId: string
+  email: string
+  firstName: string
+  lastName: string
+  role: ProjectRole
+  version: number
+}
+
+export interface AddProjectMemberInput {
+  email: string
+  role: ProjectRole
+}
+
+export interface ChangeProjectMemberRoleInput {
+  role: ProjectRole
+  expectedVersion: number
+}

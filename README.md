@@ -202,6 +202,39 @@ In development the session cookie is not `Secure` (`Secure=false`), so the
 application works over plain HTTP on `localhost`. The production cookie name
 `__Host-MESSOR_SESSION` is never used in development.
 
+#### 8. Manual acceptance walkthrough (project membership)
+
+This is a manual acceptance checklist for the local demo stack. It is not a
+substitute for the automated tests and does not claim the compose smoke check
+has passed. Use the demo password from `MESSOR_DEMO_PASSWORD`; never type or
+commit a real password.
+
+1. Start the stack with the documented command in step 2 above.
+2. Log in as `admin@demo.messor.app` using the `MESSOR_DEMO_PASSWORD` password.
+3. Create a project, or open an existing one.
+4. Open `/projects/{projectKey}/settings` through the UI.
+5. Add `member@demo.messor.app` as a member.
+6. Change the member's role and confirm the change is reflected in the UI and
+   that expected-version-backed updates apply.
+7. Remove the member and confirm the explicit confirmation prompt appears;
+   cancel once, then confirm the removal.
+8. Re-add `member@demo.messor.app` as a member with the `VIEWER` role, then log
+   out and log in as `member@demo.messor.app`:
+   - the member list is visible;
+   - add/change/remove controls are absent.
+9. Repeat with the `MEMBER` role:
+   - the member list is visible;
+   - management controls remain absent.
+10. Log back in as `admin@demo.messor.app` and confirm the project lead can
+    still manage membership.
+11. On a narrow viewport, confirm the project/settings navigation remains
+    usable and responsive.
+12. Verify logout/login isolation: after switching principals, the previous
+    principal's project and member data is not briefly rendered.
+13. Restart the stack and confirm project and membership data persist.
+14. As a nonmember, confirm membership probing returns `PROJECT_NOT_FOUND`
+    (HTTP 404) without disclosing the project's existence.
+
 ## Production
 
 ### Prepare the environment

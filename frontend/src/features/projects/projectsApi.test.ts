@@ -243,3 +243,212 @@ describe('projectsApi', () => {
     expect(storageSet).not.toHaveBeenCalled()
   })
 })
+
+describe('projectsApi membership functions', () => {
+  let fetchSpy: Mock
+
+  const member = {
+    userId: '22222222-2222-2222-2222-222222222222',
+    email: 'member@demo.messor.app',
+    firstName: 'Grace',
+    lastName: 'Hopper',
+    role: 'MEMBER',
+    version: 3,
+  }
+
+  beforeEach(() => {
+    fetchSpy = fetchMock()
+    vi.stubGlobal('fetch', fetchSpy)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('getProject GETs the exact project detail URL with credentials', async () => {
+    const detail = {
+      id: '11111111-1111-1111-1111-111111111111',
+      key: 'MES',
+      name: 'Messor',
+      description: null,
+      currentUserRole: 'PROJECT_LEAD',
+      version: 0,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      workflowStatuses: [],
+    }
+    fetchSpy.mockResolvedValueOnce(jsonResponse(detail))
+
+    const { getProject } = await loadModules()
+    const result = await getProject('MES')
+
+    expect(result).toEqual(detail)
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${PROJECTS_URL}/MES`,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('listProjectMembers GETs the exact member-list URL with credentials', async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResponse([member]))
+
+    const { listProjectMembers } = await loadModules()
+    const result = await listProjectMembers('MES')
+
+    expect(result).toEqual([member])
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${PROJECTS_URL}/MES/members`,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+  })
+
+  it('addProjectMember POSTs the exact body with the in-memory CSRF token', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse(member, 201))
+
+    const { addProjectMember } = await loadModules()
+    const result = await addProjectMember('MES', {
+      email: 'member@demo.messor.app',
+      role: 'MEMBER',
+    })
+
+    expect(result).toEqual(member)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      CSRF_URL,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const addCall = fetchSpy.mock.calls[1]
+    expect(addCall[0]).toBe(`${PROJECTS_URL}/MES/members`)
+    expect(addCall[1].method).toBe('POST')
+    expect(addCall[1].credentials).toBe('include')
+    expect(addCall[1].headers).toMatchObject({
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: 'token-1',
+    })
+    expect(JSON.parse(addCall[1].body)).toEqual({
+      email: 'member@demo.messor.app',
+      role: 'MEMBER',
+    })
+  })
+
+  it('changeProjectMemberRole PATCHes the exact path and body including expectedVersion', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
+
+    const { changeProjectMemberRole } = await loadModules()
+    const result = await changeProjectMemberRole('MES', member.userId, {
+      role: 'VIEWER',
+      expectedVersion: 3,
+    })
+
+    expect(result).toMatchObject({ role: 'VIEWER', version: 4 })
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      CSRF_URL,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const patchCall = fetchSpy.mock.calls[1]
+    expect(patchCall[0]).toBe(`${PROJECTS_URL}/MES/members/${member.userId}`)
+    expect(patchCall[1].method).toBe('PATCH')
+    expect(patchCall[1].headers).toMatchObject({
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: 'token-1',
+    })
+    expect(JSON.parse(patchCall[1].body)).toEqual({
+      role: 'VIEWER',
+      expectedVersion: 3,
+    })
+  })
+
+  it('removeProjectMember DELETEs the exact path with expectedVersion query param', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const { removeProjectMember } = await loadModules()
+    const result = await removeProjectMember('MES', member.userId, 3)
+
+    expect(result).toBeUndefined()
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      CSRF_URL,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const deleteCall = fetchSpy.mock.calls[1]
+    expect(deleteCall[0]).toBe(
+      `${PROJECTS_URL}/MES/members/${member.userId}?expectedVersion=3`,
+    )
+    expect(deleteCall[1].method).toBe('DELETE')
+    expect(deleteCall[1].headers).toMatchObject({ [CSRF_HEADER]: 'token-1' })
+  })
+
+  it('safely encodes projectKey and userId path parameters', async () => {
+    fetchSpy.mockResolvedValueOnce(jsonResponse([member]))
+
+    const { listProjectMembers } = await loadModules()
+    await listProjectMembers('M E/S')
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      `${PROJECTS_URL}/M%20E%2FS/members`,
+      expect.anything(),
+    )
+  })
+
+  it('encodes both projectKey and userId segments in a PATCH URL', async () => {
+    const projectKey = 'M E/S'
+    const userId = 'user id/with+reserved&chars'
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
+
+    const { changeProjectMemberRole } = await loadModules()
+    await changeProjectMemberRole(projectKey, userId, {
+      role: 'VIEWER',
+      expectedVersion: 3,
+    })
+
+    const encodedProjectKey = encodeURIComponent(projectKey)
+    const encodedUserId = encodeURIComponent(userId)
+    const patchCall = fetchSpy.mock.calls[1]
+    expect(patchCall[0]).toBe(
+      `${PROJECTS_URL}/${encodedProjectKey}/members/${encodedUserId}`,
+    )
+    expect(patchCall[0]).toContain(encodedProjectKey)
+    expect(patchCall[0]).toContain(encodedUserId)
+    expect(patchCall[1].method).toBe('PATCH')
+    expect(patchCall[1].headers).toMatchObject({
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: 'token-1',
+    })
+    expect(JSON.parse(patchCall[1].body)).toEqual({
+      role: 'VIEWER',
+      expectedVersion: 3,
+    })
+  })
+
+  it('encodes both projectKey and userId segments in a DELETE URL', async () => {
+    const projectKey = 'M E/S'
+    const userId = 'user id/with+reserved&chars'
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const { removeProjectMember } = await loadModules()
+    await removeProjectMember(projectKey, userId, 3)
+
+    const encodedProjectKey = encodeURIComponent(projectKey)
+    const encodedUserId = encodeURIComponent(userId)
+    const deleteCall = fetchSpy.mock.calls[1]
+    expect(deleteCall[0]).toBe(
+      `${PROJECTS_URL}/${encodedProjectKey}/members/${encodedUserId}?expectedVersion=3`,
+    )
+    expect(deleteCall[0]).toContain(encodedProjectKey)
+    expect(deleteCall[0]).toContain(encodedUserId)
+    expect(deleteCall[1].method).toBe('DELETE')
+    expect(deleteCall[1].headers).toMatchObject({ [CSRF_HEADER]: 'token-1' })
+  })
+})

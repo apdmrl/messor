@@ -84,6 +84,12 @@ export function ProjectsPage(): ReactElement {
                     {roleLabel(project.currentUserRole)}
                   </span>
                 </Link>
+                <Link
+                  className="project-card__settings"
+                  to={`/projects/${project.key}/settings`}
+                >
+                  Ayarlar
+                </Link>
               </li>
             ))}
           </ul>

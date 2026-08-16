@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuthApiError } from './features/auth/authApi'
 import type { UserSummary } from './features/auth/types'
@@ -86,20 +86,29 @@ vi.mock('./features/projects/projectsApi', async (importOriginal) => {
     ...actual,
     listProjects: vi.fn(),
     createProject: vi.fn(),
+    getProject: vi.fn(),
+    listProjectMembers: vi.fn(),
   }
 })
 
 import { getCurrentUser, login, logout } from './features/auth/authApi'
-import { listProjects } from './features/projects/projectsApi'
+import {
+  getProject,
+  listProjectMembers,
+  listProjects,
+} from './features/projects/projectsApi'
 import App from './App'
 
 const getCurrentUserMock = getCurrentUser as Mock
 const loginMock = login as Mock
 const logoutMock = logout as Mock
 const listProjectsMock = listProjects as Mock
+const getProjectMock = getProject as Mock
+const listProjectMembersMock = listProjectMembers as Mock
 
 function renderAt(path: string): void {
   window.history.pushState({}, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
   render(<App />)
 }
 
@@ -110,7 +119,10 @@ describe('App session state and routing', () => {
     logoutMock.mockReset()
     listProjectsMock.mockReset()
     listProjectsMock.mockResolvedValue(emptyProjects)
+    getProjectMock.mockReset()
+    listProjectMembersMock.mockReset()
     window.history.pushState({}, '', '/')
+    window.dispatchEvent(new PopStateEvent('popstate'))
   })
 
   afterEach(() => {
@@ -164,6 +176,66 @@ describe('App session state and routing', () => {
       expect(
         await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
       ).toBeInTheDocument()
+    })
+
+    it('redirects an anonymous user from project settings to /login', async () => {
+      getCurrentUserMock.mockResolvedValue(null)
+      renderAt('/projects/MES/settings')
+
+      expect(
+        await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  describe('project settings route', () => {
+    it('deep-links an authenticated user directly to settings', async () => {
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      getProjectMock.mockResolvedValue({
+        id: '11111111-1111-1111-1111-111111111111',
+        key: 'MES',
+        name: 'Messor',
+        description: null,
+        currentUserRole: 'PROJECT_LEAD',
+        version: 0,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        workflowStatuses: [],
+      })
+      listProjectMembersMock.mockResolvedValue([
+        {
+          userId: '11111111-1111-1111-1111-111111111111',
+          email: 'admin@demo.messor.app',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          role: 'PROJECT_LEAD',
+          version: 1,
+        },
+      ])
+      renderAt('/projects/MES/settings')
+
+      await waitFor(() => {
+        expect(getProjectMock).toHaveBeenCalledWith('MES')
+      })
+      expect(
+        await screen.findByRole('heading', { name: 'Proje ayarları', level: 2 }),
+      ).toBeInTheDocument()
+      const memberCard = screen.getByRole('listitem')
+      expect(within(memberCard).getByText('Ada Lovelace')).toBeInTheDocument()
+    })
+
+    it('exposes a settings link from each project on the projects page', async () => {
+      getCurrentUserMock.mockResolvedValue(adminUser)
+      listProjectsMock.mockResolvedValue(adminProjects)
+      renderAt('/projects')
+
+      await screen.findByText('Alpha Project')
+
+      const settingsLink = screen.getByRole('link', { name: 'Ayarlar' })
+      expect(settingsLink).toHaveAttribute(
+        'href',
+        '/projects/ALPHA/settings',
+      )
     })
   })
 

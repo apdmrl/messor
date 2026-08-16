@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { LoginPage } from '../features/auth/LoginPage'
 import { MyWorkPlaceholder } from '../features/my-work/MyWorkPlaceholder'
 import { ProjectBoardPlaceholder } from '../features/projects/ProjectBoardPlaceholder'
+import { ProjectSettingsPage } from '../features/projects/ProjectSettingsPage'
 import { ProjectsPage } from '../features/projects/ProjectsPage'
 import { AuthenticatedShell } from './AuthenticatedShell'
 import { useSession } from './session'
@@ -71,6 +72,10 @@ export const router = createBrowserRouter([
       {
         path: '/projects/:projectKey/board',
         element: <ProjectBoardPlaceholder />,
+      },
+      {
+        path: '/projects/:projectKey/settings',
+        element: <ProjectSettingsPage />,
       },
       {
         path: '/my-work',
