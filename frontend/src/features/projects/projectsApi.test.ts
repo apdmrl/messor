@@ -242,6 +242,53 @@ describe('projectsApi', () => {
 
     expect(storageSet).not.toHaveBeenCalled()
   })
+
+  it('fetches a fresh CSRF token after a protected GET returns UNAUTHENTICATED', async () => {
+    const detail = {
+      id: '11111111-1111-1111-1111-111111111111',
+      key: 'MES',
+      name: 'Messor',
+      description: null,
+      currentUserRole: 'PROJECT_LEAD',
+      version: 0,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      workflowStatuses: [],
+    }
+    const hostileDetail = 'internal session secret: session-store-42'
+
+    // 1. First mutation succeeds and caches CSRF token A.
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-A'))
+      .mockResolvedValueOnce(jsonResponse(detail, 201))
+      // 2. Protected GET returns 401 UNAUTHENTICATED with a hostile detail.
+      .mockResolvedValueOnce(
+        problemResponse(401, 'UNAUTHENTICATED', hostileDetail),
+      )
+      // 4. Second mutation must fetch a fresh CSRF token (not reuse token A).
+      .mockResolvedValueOnce(csrfResponse('token-B'))
+      .mockResolvedValueOnce(jsonResponse(detail, 201))
+
+    const { createProject, listProjects, ApiError } = await loadModules()
+
+    // 1. First mutation caches token A.
+    await createProject({ key: 'MES', name: 'Messor' })
+
+    // 2-3. Protected GET returns UNAUTHENTICATED; assert the typed ApiError.
+    const error = await listProjects().catch((e: unknown) => e)
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' })
+
+    // 4. Second mutation must fetch a fresh CSRF token rather than reuse token A.
+    await createProject({ key: 'MES', name: 'Messor' })
+
+    // csrf-A, create-1, unauth GET, csrf-B, create-2
+    expect(fetchSpy).toHaveBeenCalledTimes(5)
+    const secondCreate = fetchSpy.mock.calls[4]
+    expect(secondCreate[0]).toBe(PROJECTS_URL)
+    expect(secondCreate[1].method).toBe('POST')
+    expect(secondCreate[1].headers[CSRF_HEADER]).toBe('token-B')
+  })
 })
 
 describe('projectsApi membership functions', () => {

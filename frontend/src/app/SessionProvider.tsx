@@ -3,6 +3,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getCurrentUser, logout } from '../features/auth/authApi'
 import type { UserSummary } from '../features/auth/types'
+import { advanceAuthenticationEpoch, subscribeToUnauthenticated } from './apiClient'
 import { SessionContext } from './session'
 import type { SessionState } from './session'
 
@@ -38,8 +39,10 @@ export function SessionProvider({
         if (user === null) {
           setSession({ status: 'anonymous' })
         } else {
-          // Accepting an authenticated principal is a boundary: drop any
-          // cached server state before exposing the new user's session.
+          // Accepting an authenticated principal is a boundary: advance the
+          // authentication epoch and drop any cached server state before
+          // exposing the new user's session.
+          advanceAuthenticationEpoch()
           queryClient.clear()
           setSession({ status: 'authenticated', user })
         }
@@ -55,6 +58,20 @@ export function SessionProvider({
     }
   }, [queryClient])
 
+  // Subscribe to current-session expiry notifications before bootstrap can
+  // complete with UNAUTHENTICATED. On a confirmed expiry, apiClient has already
+  // advanced the epoch and cleared the CSRF cache; here we clear the shared
+  // query cache, reset logout UI state, and drop to the anonymous session so
+  // RequireAuth performs the existing redirect.
+  useEffect(() => {
+    return subscribeToUnauthenticated(() => {
+      queryClient.clear()
+      setLogoutPending(false)
+      setLogoutError(null)
+      setSession({ status: 'anonymous' })
+    })
+  }, [queryClient])
+
   useEffect(() => {
     return bootstrap()
   }, [bootstrap])
@@ -62,7 +79,9 @@ export function SessionProvider({
   const handleAuthenticated = useCallback(
     (user: UserSummary): void => {
       // Accepting a successfully authenticated user is a principal boundary:
-      // drop any cached server state before switching to the new session.
+      // advance the authentication epoch and drop any cached server state
+      // before switching to the new session.
+      advanceAuthenticationEpoch()
       queryClient.clear()
       setSession({ status: 'authenticated', user })
     },
@@ -79,6 +98,7 @@ export function SessionProvider({
       await logout()
       // Only a successful logout is a principal boundary. A failed logout
       // must retain the current authenticated session and its cache.
+      advanceAuthenticationEpoch()
       queryClient.clear()
       setSession({ status: 'anonymous' })
     } catch {
