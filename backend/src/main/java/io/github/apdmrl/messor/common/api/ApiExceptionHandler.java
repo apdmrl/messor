@@ -2,6 +2,7 @@ package io.github.apdmrl.messor.common.api;
 
 import java.net.URI;
 
+import jakarta.persistence.OptimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 
@@ -63,6 +64,22 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(ObjectOptimisticLockingFailureException.class)
 	public ResponseEntity<ProblemDetail> handleOptimisticLocking(
 			ObjectOptimisticLockingFailureException ex, HttpServletRequest request) {
+		return problemResponse(problem(HttpStatus.CONFLICT, CODE_VERSION_CONFLICT,
+				"Kayıt başka bir işlem tarafından güncellendi.", request));
+	}
+
+	/**
+	 * A flush-time or commit-time optimistic collision may surface as the raw
+	 * Jakarta Persistence {@link OptimisticLockException} (e.g. when the versioned
+	 * UPDATE affects zero rows) rather than Spring's
+	 * {@link ObjectOptimisticLockingFailureException} wrapper. Both families must
+	 * map to the exact safe {@code 409 VERSION_CONFLICT} contract. Only the
+	 * optimistic-lock exception is translated here; unrelated persistence or data
+	 * access failures are never converted to {@code VERSION_CONFLICT}.
+	 */
+	@ExceptionHandler(OptimisticLockException.class)
+	public ResponseEntity<ProblemDetail> handleJpaOptimisticLocking(
+			OptimisticLockException ex, HttpServletRequest request) {
 		return problemResponse(problem(HttpStatus.CONFLICT, CODE_VERSION_CONFLICT,
 				"Kayıt başka bir işlem tarafından güncellendi.", request));
 	}
