@@ -716,6 +716,115 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 		}
 	}
 
+	/**
+	 * When an archive wins before a concurrent same-status no-op move of the same
+	 * issue (both with {@code expectedVersion=0}), the move must be serialized
+	 * after the archive and rejected with {@code 409 ISSUE_ARCHIVED}. The archive
+	 * blocks on the held issue-row lock first; only then is the move launched and
+	 * allowed to block behind it. After the lock is released, the archive commits
+	 * (archived=true, version=1, exactly {@code CREATED, ARCHIVED} activities) and
+	 * the stale no-op move must not succeed: no {@code MOVED} activity, no version
+	 * or rank change, and no mutation of the status/rank or immutable fields.
+	 *
+	 * <p>Determinism: a separate JDBC transaction holds {@code SELECT ... FOR
+	 * UPDATE} on the issue row. The archive is launched and its session observed
+	 * blocked (so it is queued first), then the move is launched and observed
+	 * blocked behind it. Both are proven queued via {@link #awaitBlockedSessions}
+	 * using one bounded absolute deadline before the held lock is released.</p>
+	 */
+	@Test
+	void concurrentArchiveWinsBeforeNoOpMoveReturnsIssueArchived() throws Exception {
+		LoginSession admin = login("concurrency-archmove-admin@example.com", UserRole.ORG_ADMIN);
+		String key = createProject(admin, "CONCUR10", "Archive/move race");
+		LoginSession memberA = login("concurrency-archmove-a@example.com", UserRole.USER);
+		addMember(key, memberA.userId(), "MEMBER");
+		LoginSession memberB = login("concurrency-archmove-b@example.com", UserRole.USER);
+		addMember(key, memberB.userId(), "MEMBER");
+		String issueKey = createIssue(admin, key, "STORY", "Archived before no-op move", "desc",
+				null);
+
+		// Snapshot complete issue/activity/order/counter state before the race.
+		long versionBefore = issueVersion(issueKey);
+		String statusBefore = statusOf(issueKey);
+		long rankBefore = rankOf(issueKey);
+		List<String> todoBefore = activeKeysInStatus(key, "TO_DO");
+		List<Long> ranksBefore = ranksInStatus(key, "TO_DO");
+		List<String> activityBefore = activityTypes(issueKey);
+		Long counterBefore = counterNextNumber(key);
+
+		// The single active TO_DO issue is already last in its column.
+		assertThat(statusBefore).isEqualTo("TO_DO");
+		assertThat(todoBefore).containsExactly(issueKey);
+		assertThat(ranksBefore).containsExactly(rankBefore);
+		assertThat(activityBefore).containsExactly("CREATED");
+		assertThat(versionBefore).isEqualTo(0L);
+
+		try (Connection lockConn = dataSource.getConnection()) {
+			lockConn.setAutoCommit(false);
+			long lockPid = lockIssueRow(lockConn, issueKey);
+
+			ExecutorService executor = Executors.newFixedThreadPool(2);
+			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DEADLOCK_TIMEOUT_SECONDS);
+			try {
+				// Launch archive first and prove it is queued on the issue-row lock.
+				CountDownLatch startGate = new CountDownLatch(1);
+				Future<MvcResult> archiveFuture = executor.submit(() -> {
+					awaitGate(startGate, deadline);
+					return performArchive(issueKey, memberA, 0L);
+				});
+				startGate.countDown();
+				awaitBlockedSessions(lockPid, 1, deadline);
+
+				// Launch the same-status append/no-op move only after archive is
+				// queued, then prove it is queued behind archive on the same lock.
+				Future<MvcResult> moveFuture = executor.submit(() ->
+						performMove(issueKey, memberB, "TO_DO", null, null, 0L));
+				awaitBlockedSessions(lockPid, 2, deadline);
+
+				// Release the held issue-row lock; archive is first in queue.
+				lockConn.rollback();
+
+				MvcResult archiveResult = archiveFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+				MvcResult moveResult = moveFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+
+				// Archive wins and returns 200.
+				assertThat(archiveResult.getResponse().getStatus()).isEqualTo(200);
+				JsonNode archiveBody = objectMapper.readTree(
+						archiveResult.getResponse().getContentAsString());
+				assertThat(archiveBody.get("archived").asBoolean()).isTrue();
+
+				// The serialized no-op move is rejected as archived with exact detail.
+				assertThat(moveResult.getResponse().getStatus()).isEqualTo(409);
+				JsonNode moveBody = objectMapper.readTree(
+						moveResult.getResponse().getContentAsString());
+				assertThat(moveBody.get("code").asText()).isEqualTo("ISSUE_ARCHIVED");
+				assertThat(moveBody.get("detail").asText())
+						.isEqualTo("Arşivlenmiş iş değiştirilemez.");
+
+				// Final archived=true and version incremented exactly once.
+				Map<String, Object> row = jdbcTemplate.queryForMap(
+						"SELECT version, archived FROM issue WHERE human_key = ?", issueKey);
+				assertThat(row.get("archived")).isEqualTo(true);
+				assertThat(row.get("version")).isEqualTo(1L);
+
+				// Status, rank and immutable fields unchanged by the rejected move.
+				assertThat(statusOf(issueKey)).isEqualTo(statusBefore);
+				assertThat(rankOf(issueKey)).isEqualTo(rankBefore);
+
+				// Activities exactly CREATED, ARCHIVED; no MOVED activity.
+				assertThat(activityTypes(issueKey)).containsExactly("CREATED", "ARCHIVED");
+
+				// Counter unchanged from the pre-request snapshot.
+				assertCounterUnchanged(counterBefore, key);
+			}
+			finally {
+				shutdownExecutor(executor, deadline);
+			}
+		}
+	}
+
 	// ------------------------------------------------------------------
 	// Concurrency harness
 	// ------------------------------------------------------------------

@@ -22,6 +22,7 @@ import io.github.apdmrl.messor.project.WorkflowStatus;
 import io.github.apdmrl.messor.project.WorkflowStatusRepository;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -263,13 +264,17 @@ public class IssueService {
 		* <p>Locking uses a deterministic per-project lock order to avoid deadlock:
 		* the moving issue is loaded and authorized first, then every workflow
 		* status row of the project is locked with pessimistic write locks in
-		* position-then-id order, then the active destination issues are locked by
-		* rank then id. Because every move locks the same project status set in the
-		* same order, opposite-direction cross-column moves serialize on the
-		* statuses instead of inverting lock order, and a move into {@code TO_DO}
+		* position-then-id order, then the moving issue row itself is locked with
+		* a {@code PESSIMISTIC_WRITE} lock, then the active destination issues are
+		* locked by rank then id. Because every move locks the same project status
+		* set in the same order, opposite-direction cross-column moves serialize on
+		* the statuses instead of inverting lock order, and a move into {@code TO_DO}
 		* coordinates with create's own {@code TO_DO} status lock. Independent
-		* projects lock disjoint rows and never contend. The moving issue is
-		* refreshed after acquiring the status locks and its archived state and
+		* projects lock disjoint rows and never contend. Locking the moving issue
+		* row (which archive/update never follow with a workflow-status lock)
+		* serializes a move against archive/update without introducing a reverse
+		* lock cycle. The moving issue is refreshed under that write lock after
+		* acquiring the status locks and its archived state and
 		* {@code expectedVersion} are rechecked after the wait. The target status
 		* is resolved only from the locked same-project status set, and neighbors
 		* are validated only against the locked active destination list.</p>
@@ -294,10 +299,17 @@ public class IssueService {
 		UUID projectId = issue.getProject().getId();
 
 		// Lock all workflow-status rows of the project in deterministic
-		// position/id order, then refresh the moving issue after acquiring locks.
+		// position/id order, then acquire a pessimistic write lock on the moving
+		// issue row and refresh it atomically with the held lock. Locking the
+		// issue row here serializes a move against archive/update (which lock only
+		// the issue row and never request workflow-status locks), so if archive
+		// wins first the move waits, refreshes the archived state, and rejects,
+		// while if the move locks first its no-op is linearized before archive and
+		// may safely return 200. The issue row is refreshed after the status locks
+		// and its archived state and expectedVersion are rechecked after the wait.
 		List<WorkflowStatus> statuses = statusRepository
 				.lockAllByProjectIdOrderByPositionAscIdAsc(projectId);
-		entityManager.refresh(issue);
+		entityManager.refresh(issue, LockModeType.PESSIMISTIC_WRITE);
 
 		// Recheck archived state and expectedVersion after the wait.
 		if (issue.isArchived()) {
