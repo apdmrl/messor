@@ -1,0 +1,136 @@
+.my-work {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.my-work__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.my-work__heading {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.2;
+}
+
+.my-work__subheading {
+  margin: 0;
+  color: var(--text-muted, #555);
+  font-size: 0.9rem;
+}
+
+.my-work__status,
+.my-work__error,
+.my-work__empty {
+  margin: 0;
+}
+
+.my-work__error {
+  color: var(--danger, #b3261e);
+}
+
+.my-work__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.my-work__item {
+  margin: 0;
+}
+
+.my-work__link {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--surface, #fff);
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.my-work__link:hover,
+.my-work__link:focus-visible {
+  border-color: var(--accent, #3457d5);
+}
+
+.my-work__key {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.my-work__title {
+  font-weight: 500;
+}
+
+.my-work__meta {
+  color: var(--text-muted, #555);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.my-work__meta--type {
+  text-transform: none;
+}
+
+.my-work__archived {
+  color: var(--text-muted, #555);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.my-work__pagination {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.my-work__page {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+}
+
+.my-work__page:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.my-work__page-info {
+  font-size: 0.9rem;
+}
+
+/* Responsive: collapse the multi-column issue rows on narrow screens so no
+   horizontal overflow occurs. */
+@media (max-width: 720px) {
+  .my-work__link {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .my-work__meta {
+    text-align: left;
+  }
+}

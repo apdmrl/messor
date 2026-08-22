@@ -1,0 +1,43 @@
+.issue-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.issue-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.issue-filters__label {
+  font-size: 0.85rem;
+  color: var(--text-muted, #555);
+}
+
+.issue-filters__select {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+/* On narrow screens, let the fields wrap to full width so the panel never
+   overflows horizontally. */
+@media (max-width: 480px) {
+  .issue-filters__field {
+    width: 100%;
+  }
+
+  .issue-filters__select {
+    width: 100%;
+  }
+}

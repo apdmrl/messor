@@ -58,6 +58,52 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 	Page<Issue> findActiveByProject(@Param("projectId") UUID projectId, Pageable pageable);
 
 	/**
+	 * Returns a page of issues assigned to {@code userId} across every project
+	 * (the ORG_ADMIN case, which may access all projects). The archived predicate
+	 * is {@code null} for ALL, {@code false} for ACTIVE (default) and {@code true}
+	 * for ARCHIVED. Optional project/type/status filters are applied only when
+	 * their parameter is non-null. Ordering comes from the caller-constructed
+	 * {@link Pageable}, which is built from a validated allowlist field plus a
+	 * deterministic secondary {@code number ASC} tie-breaker.
+	 */
+	@Query("""
+			select i from Issue i
+			where i.assignee.id = :userId
+			  and (:projectKey is null or i.project.key = :projectKey)
+			  and (:type is null or i.type = :type)
+			  and (:statusCode is null or i.workflowStatus.code = :statusCode)
+			  and (:archived is null or i.archived = :archived)
+			""")
+	Page<Issue> findMyWork(@Param("userId") UUID userId,
+			@Param("projectKey") String projectKey,
+			@Param("type") IssueType type,
+			@Param("statusCode") String statusCode,
+			@Param("archived") Boolean archived, Pageable pageable);
+
+	/**
+	 * Same as {@link #findMyWork(UUID, String, IssueType, String, Boolean, Pageable)}
+	 * but additionally restricts the result to projects the principal currently
+	 * belongs to (the non-admin case). Issues assigned to the principal in a
+	 * project whose membership was removed, or where they were never a member,
+	 * are safely excluded by the membership subquery.
+	 */
+	@Query("""
+			select i from Issue i
+			where i.assignee.id = :userId
+			  and (:projectKey is null or i.project.key = :projectKey)
+			  and (:type is null or i.type = :type)
+			  and (:statusCode is null or i.workflowStatus.code = :statusCode)
+			  and (:archived is null or i.archived = :archived)
+			  and i.project.id in (
+			    select pm.project.id from ProjectMember pm where pm.user.id = :userId)
+			""")
+	Page<Issue> findMyWorkInMemberProjects(@Param("userId") UUID userId,
+			@Param("projectKey") String projectKey,
+			@Param("type") IssueType type,
+			@Param("statusCode") String statusCode,
+			@Param("archived") Boolean archived, Pageable pageable);
+
+	/**
 	 * Returns the maximum active (non-archived) rank currently used in the given
 	 * project and workflow status, or {@code 0} when no active issue exists
 	 * there. Used to append a new issue after the current maximum with a positive

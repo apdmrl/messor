@@ -91,18 +91,28 @@ vi.mock('./features/projects/projectsApi', async (importOriginal) => {
   }
 })
 
+vi.mock('./features/my-work/myWorkApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./features/my-work/myWorkApi')>()
+  return {
+    ...actual,
+    listMyWork: vi.fn(),
+  }
+})
+
 import { getCurrentUser, login, logout } from './features/auth/authApi'
 import {
   getProject,
   listProjectMembers,
   listProjects,
 } from './features/projects/projectsApi'
+import { listMyWork } from './features/my-work/myWorkApi'
 import App from './App'
 
 const getCurrentUserMock = getCurrentUser as Mock
 const loginMock = login as Mock
 const logoutMock = logout as Mock
 const listProjectsMock = listProjects as Mock
+const listMyWorkMock = listMyWork as Mock
 const getProjectMock = getProject as Mock
 const listProjectMembersMock = listProjectMembers as Mock
 
@@ -119,6 +129,14 @@ describe('App session state and routing', () => {
     logoutMock.mockReset()
     listProjectsMock.mockReset()
     listProjectsMock.mockResolvedValue(emptyProjects)
+    listMyWorkMock.mockReset()
+    listMyWorkMock.mockResolvedValue({
+      items: [],
+      page: 0,
+      size: 20,
+      totalItems: 0,
+      totalPages: 0,
+    })
     getProjectMock.mockReset()
     listProjectMembersMock.mockReset()
     window.history.pushState({}, '', '/')
@@ -361,8 +379,9 @@ describe('App session state and routing', () => {
       expect(
         await screen.findByRole('heading', { name: 'Görevlerim', level: 2 }),
       ).toBeInTheDocument()
+      expect(listMyWorkMock).toHaveBeenCalled()
       expect(
-        screen.getByText('Görevlerim ekranı sonraki pakette tamamlanacak.'),
+        await screen.findByText('Sana atanmış iş bulunamadı.'),
       ).toBeInTheDocument()
     })
   })

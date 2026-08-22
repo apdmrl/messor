@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../app/apiClient'
@@ -72,6 +72,7 @@ export function IssueWorkspacePage(): ReactElement {
   }>()
   const key = projectKey ?? ''
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { session } = useSession()
 
@@ -102,10 +103,16 @@ export function IssueWorkspacePage(): ReactElement {
     session.status === 'authenticated' ? session.user.id : null
 
   const handleDrawerClose = useCallback((): void => {
-    if (openedFromBoardRef.current) {
-      const returnKey = focusReturnIssueKeyRef.current
+    if (openedFromBoardRef.current || location.state?.fromMyWork === true) {
       openedFromBoardRef.current = false
       focusReturnIssueKeyRef.current = null
+      if (location.state?.fromMyWork === true) {
+        // The drawer was opened from My Work; going back returns to My Work
+        // rather than the board. There is no board card to return focus to.
+        navigate(-1)
+        return
+      }
+      const returnKey = focusReturnIssueKeyRef.current
       if (returnKey !== null) {
         setFocusIssueKey(returnKey)
       }
@@ -116,7 +123,7 @@ export function IssueWorkspacePage(): ReactElement {
       setFocusIntent('list-heading')
       navigate(`/projects/${key}/board`, { replace: true })
     }
-  }, [key, navigate])
+  }, [key, navigate, location.state])
 
   /**
    * Synchronous ownership lock for every issue mutation. Updated immediately at

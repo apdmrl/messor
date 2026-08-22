@@ -6,8 +6,12 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { routes } from './router'
 import { SessionContext } from './session'
 import type { SessionContextValue } from './session'
-import { MyWorkPlaceholder } from '../features/my-work/MyWorkPlaceholder'
-import type { ProjectDetail, ProjectMember } from '../features/projects/types'
+import type {
+  PageResponse,
+  ProjectDetail,
+  ProjectMember,
+  ProjectSummary,
+} from '../features/projects/types'
 import type { Issue, IssuePage } from '../features/issues/types'
 
 const projectDetail: ProjectDetail = {
@@ -40,6 +44,15 @@ vi.mock('../features/projects/projectsApi', async (importOriginal) => {
     ...actual,
     getProject: vi.fn(),
     listProjectMembers: vi.fn(),
+    listProjects: vi.fn(),
+  }
+})
+
+vi.mock('../features/my-work/myWorkApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../features/my-work/myWorkApi')>()
+  return {
+    ...actual,
+    listMyWork: vi.fn(),
   }
 })
 
@@ -59,11 +72,15 @@ vi.mock('../features/issues/issuesApi', async (importOriginal) => {
 import {
   getProject,
   listProjectMembers,
+  listProjects,
 } from '../features/projects/projectsApi'
 import { getIssue, listIssueActivity, listIssues } from '../features/issues/issuesApi'
+import { listMyWork } from '../features/my-work/myWorkApi'
 
 const getProjectMock = getProject as Mock
 const listProjectMembersMock = listProjectMembers as Mock
+const listProjectsMock = listProjects as Mock
+const listMyWorkMock = listMyWork as Mock
 const listIssuesMock = listIssues as Mock
 const getIssueMock = getIssue as Mock
 const listIssueActivityMock = listIssueActivity as Mock
@@ -122,6 +139,8 @@ describe('router', () => {
   beforeEach(() => {
     getProjectMock.mockReset()
     listProjectMembersMock.mockReset()
+    listProjectsMock.mockReset()
+    listMyWorkMock.mockReset()
     listIssuesMock.mockReset()
     getIssueMock.mockReset()
     listIssueActivityMock.mockReset()
@@ -191,24 +210,20 @@ describe('router', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('renders the My Work placeholder with a named future-package message', () => {
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <SessionContext.Provider value={anonymousSession}>
-          <MyWorkPlaceholder />
-        </SessionContext.Provider>
-      </QueryClientProvider>,
-    )
+  it('renders the My Work screen at /my-work for an authenticated user', async () => {
+    listProjectsMock.mockResolvedValue({
+      items: [] as ProjectSummary[],
+      page: 0,
+      size: 100,
+      totalItems: 0,
+      totalPages: 0,
+    } as PageResponse<ProjectSummary>)
+    listMyWorkMock.mockResolvedValue(emptyPage)
+    renderRouterAt(authenticatedSession, ['/my-work'])
 
     expect(
-      screen.getByRole('heading', { name: 'Görevlerim', level: 2 }),
+      await screen.findByRole('heading', { name: 'Görevlerim', level: 2 }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByText('Görevlerim ekranı sonraki pakette tamamlanacak.'),
-    ).toBeInTheDocument()
+    expect(listMyWorkMock).toHaveBeenCalled()
   })
 })

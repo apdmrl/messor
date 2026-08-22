@@ -4,7 +4,7 @@ import type { ReactElement } from 'react'
 import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
 import { IssueWorkspacePage } from '../features/issues/IssueWorkspacePage'
-import { MyWorkPlaceholder } from '../features/my-work/MyWorkPlaceholder'
+import { MyWorkPage } from '../features/my-work/MyWorkPage'
 import { ProjectSettingsPage } from '../features/projects/ProjectSettingsPage'
 import { ProjectsPage } from '../features/projects/ProjectsPage'
 import { AuthenticatedShell } from './AuthenticatedShell'
@@ -84,7 +84,7 @@ export const routes: RouteObject[] = [
       },
       {
         path: '/my-work',
-        element: <MyWorkPlaceholder />,
+        element: <MyWorkPage />,
       },
     ],
   },
