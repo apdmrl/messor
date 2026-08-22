@@ -41,7 +41,7 @@ interface IssueCardProps {
   columnIssueCount: number
   totalColumns: number
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => void
+  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
 }
 
 export function IssueCard({

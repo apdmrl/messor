@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -12,7 +13,12 @@ import {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import type { WorkflowStatus } from '../projects/types'
-import { buildColumns, normalizeWorkflowStatuses, resolveDragEnd } from './boardOrder'
+import {
+  buildColumns,
+  dragEndAnnouncement,
+  normalizeWorkflowStatuses,
+  resolveDragEnd,
+} from './boardOrder'
 import { KanbanColumn } from './KanbanColumn'
 import type { Issue } from './types'
 
@@ -38,33 +44,6 @@ function dragTargetLabel(id: string): string {
   return id
 }
 
-/**
- * Controlled Turkish announcements for drag start, over, end and cancel. Every
- * message is authored here; only safe ids (issue keys) or fixed labels are
- * interpolated, so hostile status text is never announced.
- */
-const accessibility: DndContextProps['accessibility'] = {
-  announcements: {
-    onDragStart(event) {
-      return `Sürüklenen kart ${String(event.active.id)}.`
-    },
-    onDragOver(event) {
-      return event.over
-        ? `Kart ${String(event.active.id)} üzerinde: ${dragTargetLabel(String(event.over.id))}.`
-        : `Kart ${String(event.active.id)} şu anda bir hedefin üzerinde değil.`
-    },
-    onDragEnd(event) {
-      return event.over
-        ? `Kart ${String(event.active.id)} yeni konumuna taşındı.`
-        : `Kart ${String(event.active.id)} taşındı.`
-    },
-    onDragCancel(event) {
-      return `Kart ${String(event.active.id)} sürüklemesi iptal edildi.`
-    },
-  },
-  screenReaderInstructions,
-}
-
 interface ProjectBoardProps {
   workflowStatuses: WorkflowStatus[]
   issues: Issue[]
@@ -75,7 +54,7 @@ interface ProjectBoardProps {
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => void
+  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
 }
 
 export function ProjectBoard({
@@ -104,9 +83,48 @@ export function ProjectBoard({
   const normalizedStatuses = normalizeWorkflowStatuses(workflowStatuses)
   const columns = buildColumns(normalizedStatuses, issues)
 
+  // Records whether the most recent drag end was accepted as a real move. It is
+  // written synchronously in handleDragEnd (which runs before the accessibility
+  // announcement on DragEnd) and read+cleared by the announcement, so an earlier
+  // drag result can never leak into a later announcement.
+  const dragEndOutcomeRef = useRef<'moved' | 'unchanged' | null>(null)
+
+  // Controlled Turkish announcements. Derived from the same validated drag
+  // resolution used by handleDragEnd: success is announced only when a valid
+  // move was actually accepted for mutation.
+  const accessibility = useMemo<DndContextProps['accessibility']>(
+    () => ({
+      announcements: {
+        onDragStart(event) {
+          dragEndOutcomeRef.current = null
+          return `Sürüklenen kart ${String(event.active.id)}.`
+        },
+        onDragOver(event) {
+          return event.over
+            ? `Kart ${String(event.active.id)} üzerinde: ${dragTargetLabel(String(event.over.id))}.`
+            : `Kart ${String(event.active.id)} şu anda bir hedefin üzerinde değil.`
+        },
+        onDragEnd(event) {
+          const outcome = dragEndOutcomeRef.current
+          dragEndOutcomeRef.current = null
+          return dragEndAnnouncement(
+            String(event.active.id),
+            outcome === 'moved' ? 'moved' : 'unchanged',
+          )
+        },
+        onDragCancel(event) {
+          return `Kart ${String(event.active.id)} sürüklemesi iptal edildi.`
+        },
+      },
+      screenReaderInstructions,
+    }),
+    [],
+  )
+
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
     if (over === null) {
+      dragEndOutcomeRef.current = 'unchanged'
       return
     }
     const draggedKey = String(active.id)
@@ -115,9 +133,15 @@ export function ProjectBoard({
     // A null resolution is a true no-op (drop on itself) or an unknown target;
     // never reach the API and never announce a successful move.
     if (resolution === null) {
+      dragEndOutcomeRef.current = 'unchanged'
       return
     }
-    onMove(draggedKey, resolution.targetStatusCode, resolution.targetIndex)
+    const accepted = onMove(
+      draggedKey,
+      resolution.targetStatusCode,
+      resolution.targetIndex,
+    )
+    dragEndOutcomeRef.current = accepted ? 'moved' : 'unchanged'
   }
 
   const handleDragCancel = (): void => {

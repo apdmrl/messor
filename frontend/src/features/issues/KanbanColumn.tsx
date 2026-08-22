@@ -18,7 +18,7 @@ interface KanbanColumnProps {
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => void
+  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
 }
 
 export function KanbanColumn({

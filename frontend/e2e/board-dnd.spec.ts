@@ -291,6 +291,12 @@ function skipNarrowViewport(testInfo: import('@playwright/test').TestInfo): void
   )
 }
 
+/** The dnd-kit screen-reader live region, independent of the move banner which
+ *  also uses role="status". */
+function dndLiveRegion(page: Page): import('@playwright/test').Locator {
+  return page.locator('[id^="DndLiveRegion"]')
+}
+
 test('pointer same-column downward drag moves the first card below the second', async ({ page }, testInfo) => {
   skipNarrowViewport(testInfo)
   const capture: MoveCapture = { count: 0, bodies: [] }
@@ -335,6 +341,100 @@ test('pointer same-column upward drag moves the second card above the first', as
     expectedVersion: 0,
   })
   await expectOrder(page, ['MES-2', 'MES-1', 'MES-3'])
+})
+
+test('keyboard self-drop issues zero moves and announces the card position did not change', async ({ page }, testInfo) => {
+  skipNarrowViewport(testInfo)
+  const capture: MoveCapture = { count: 0, bodies: [] }
+  await mockAuthenticated(page)
+  await mockWorkspace(page, capture)
+  await gotoBoard(page)
+
+  const live = dndLiveRegion(page)
+  const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
+  await handle.focus()
+  await page.waitForTimeout(80)
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.up('Space')
+  await page.waitForTimeout(80)
+  // Pick up and drop without moving: a genuine self-drop.
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.up('Space')
+
+  await expect.poll(() => capture.count).toBe(0)
+  await expect(live).toContainText('Kartın konumu değişmedi.')
+  await expect(live).not.toContainText('taşındı')
+  await expectOrder(page, ['MES-1', 'MES-2', 'MES-3'])
+})
+
+test('pointer self-drop issues zero moves and no success announcement', async ({ page }, testInfo) => {
+  skipNarrowViewport(testInfo)
+  const capture: MoveCapture = { count: 0, bodies: [] }
+  await mockAuthenticated(page)
+  await mockWorkspace(page, capture)
+  await gotoBoard(page)
+
+  const live = dndLiveRegion(page)
+  await pointerDrag(
+    page,
+    page.getByRole('button', { name: 'MES-1 sürükle' }),
+    page.getByRole('button', { name: 'MES-1, First task, Yapılacak' }),
+  )
+
+  await expect.poll(() => capture.count).toBe(0)
+  await expect(live).not.toContainText('taşındı')
+  await expectOrder(page, ['MES-1', 'MES-2', 'MES-3'])
+})
+
+test('valid drop announces success only after the real move is accepted', async ({ page }, testInfo) => {
+  skipNarrowViewport(testInfo)
+  const capture: MoveCapture = { count: 0, bodies: [] }
+  await mockAuthenticated(page)
+  await mockWorkspace(page, capture)
+  await gotoBoard(page)
+
+  const live = dndLiveRegion(page)
+  const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
+  await handle.focus()
+  await page.waitForTimeout(80)
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.up('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.down('Space')
+  await page.waitForTimeout(80)
+  await page.keyboard.up('Space')
+
+  await expect.poll(() => capture.count, { timeout: 5000 }).toBe(1)
+  await expect(live).toContainText('yeni konumuna taşındı')
+  await expectOrder(page, ['MES-2', 'MES-1', 'MES-3'])
+})
+
+test('live-region announcements never leak raw issue title or status text', async ({ page }, testInfo) => {
+  skipNarrowViewport(testInfo)
+  const capture: MoveCapture = { count: 0, bodies: [] }
+  await mockAuthenticated(page)
+  await mockWorkspace(page, capture)
+  await gotoBoard(page)
+
+  const live = dndLiveRegion(page)
+  await pointerDrag(
+    page,
+    page.getByRole('button', { name: 'MES-1 sürükle' }),
+    page.getByRole('button', { name: 'MES-3, Third task, Sürüyor' }),
+  )
+  await expect.poll(() => capture.count, { timeout: 5000 }).toBe(1)
+
+  // The announcement interpolates only the safe issue key, never the title or
+  // the raw workflow status label.
+  const text = await live.textContent()
+  expect(text ?? '').toContain('MES-1')
+  expect(text ?? '').not.toContain('First task')
+  expect(text ?? '').not.toContain('Yapılacak')
+  expect(text ?? '').not.toContain('Sürüyor')
 })
 
 test('pointer cross-column drag moves the card into the destination column', async ({ page }, testInfo) => {
@@ -431,7 +531,7 @@ test('screen reader announcements are controlled Turkish text during a keyboard 
   await mockWorkspace(page, capture)
   await gotoBoard(page)
 
-  const live = page.getByRole('status')
+  const live = dndLiveRegion(page)
   const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
   await handle.focus()
   await page.waitForTimeout(80)

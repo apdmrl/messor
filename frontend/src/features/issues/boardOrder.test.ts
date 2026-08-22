@@ -5,6 +5,7 @@ import {
   buildColumns,
   columnIssues,
   computeMove,
+  dragEndAnnouncement,
   normalizeWorkflowStatuses,
   resolveDragEnd,
   resolveDropIndex,
@@ -432,5 +433,27 @@ describe('applyOptimisticMove', () => {
       targetIndex: 0,
     })
     expect(moved.find((i) => i.issueKey === 'MES-1')!.version).toBe(a.version)
+  })
+})
+
+describe('dragEndAnnouncement', () => {
+  it('announces success only for a real move', () => {
+    expect(dragEndAnnouncement('MES-1', 'moved')).toBe(
+      'Kart MES-1 yeni konumuna taşındı.',
+    )
+  })
+
+  it('uses a neutral fixed message for every non-move outcome', () => {
+    expect(dragEndAnnouncement('MES-1', 'unchanged')).toBe(
+      'Kartın konumu değişmedi.',
+    )
+  })
+
+  it('never interpolates raw status or hostile text', () => {
+    const hostile = '<script>pwn</script>'
+    expect(dragEndAnnouncement(hostile, 'unchanged')).toBe(
+      'Kartın konumu değişmedi.',
+    )
+    expect(dragEndAnnouncement(hostile, 'unchanged')).not.toContain('pwn')
   })
 })

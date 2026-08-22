@@ -170,6 +170,23 @@ export function resolveDragEnd(params: {
   return { targetStatusCode: over.statusCode, targetIndex: index }
 }
 
+export type DragEndAnnouncement = 'moved' | 'unchanged'
+
+/**
+ * Client-owned Turkish announcement text for a drag end. {@code 'moved'} is
+ * used only when a valid move was actually accepted for mutation; every other
+ * outcome (self-drop, invalid/unknown target, no-op, lock-rejected) uses the
+ * neutral fixed string. Never interpolates raw status or hostile server text.
+ */
+export function dragEndAnnouncement(
+  activeId: string,
+  outcome: DragEndAnnouncement,
+): string {
+  return outcome === 'moved'
+    ? `Kart ${activeId} yeni konumuna taşındı.`
+    : 'Kartın konumu değişmedi.'
+}
+
 export interface MoveComputation {
   /** Server-ordered workflow statuses used to validate the target status. */
   workflowStatuses: WorkflowStatus[]

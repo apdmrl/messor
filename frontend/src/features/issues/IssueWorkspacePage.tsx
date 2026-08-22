@@ -93,18 +93,21 @@ export function IssueWorkspacePage(): ReactElement {
   const activeMutationRef = useRef<MutationKind | null>(null)
 
   const tryAcquireMutation = useCallback((kind: MutationKind): boolean => {
-    const current = activeMutationRef.current
-    if (current === null) {
+    // Every acquisition succeeds only when the lock is free. There is no
+    // same-kind re-entry: a move's onMutate asserts ownership directly against
+    // the ref rather than re-acquiring.
+    if (activeMutationRef.current === null) {
       activeMutationRef.current = kind
-      return true
-    }
-    // A move's onMutate re-enters for the same move it already owns; it must
-    // accept itself rather than block.
-    if (current === kind && kind === 'move') {
       return true
     }
     return false
   }, [])
+
+  /** Synchronous authority: true while any mutation owns the lock. */
+  const mutationLocked = useCallback(
+    (): boolean => activeMutationRef.current !== null,
+    [],
+  )
 
   const releaseMutation = useCallback((kind: MutationKind): void => {
     // Only the owning mutation may release; a stale completion never clears a
@@ -372,9 +375,9 @@ export function IssueWorkspacePage(): ReactElement {
         expectedVersion: vars.expectedVersion,
       }),
     onMutate: async (vars) => {
-      // A move must already own the synchronous lock (acquired in handleMove
-      // before mutate). It accepts its own ownership and rejects anything else,
-      // so stale/synthetic triggers fail closed without blocking the same move.
+      // Defensive ownership assertion: handleMove acquires the synchronous lock
+      // before mutate; onMutate only confirms that the already-acquired owner is
+      // a move and never re-acquires. Anything else fails closed.
       if (activeMutationRef.current !== 'move') {
         throw new Error('blocked')
       }
@@ -518,7 +521,7 @@ export function IssueWorkspacePage(): ReactElement {
   }, [confirmingArchive, archiveMutation.isPending])
 
   const openCreate = (): void => {
-    if (anyMutationPending) {
+    if (anyMutationPending || mutationLocked()) {
       return
     }
     setActiveForm('create')
@@ -528,7 +531,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const closeCreate = (): void => {
-    if (createMutation.isPending) {
+    if (createMutation.isPending || mutationLocked()) {
       return
     }
     setActiveForm(null)
@@ -537,7 +540,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const openEdit = (): void => {
-    if (anyMutationPending) {
+    if (anyMutationPending || mutationLocked()) {
       return
     }
     setFormError(null)
@@ -547,7 +550,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const closeEdit = (): void => {
-    if (updateMutation.isPending) {
+    if (updateMutation.isPending || mutationLocked()) {
       return
     }
     setActiveForm(null)
@@ -556,7 +559,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleSelect = (issueKey: string): void => {
-    if (anyMutationPending) {
+    if (anyMutationPending || mutationLocked()) {
       return
     }
     setSelectedIssueKey(issueKey)
@@ -601,7 +604,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleArchive = (): void => {
-    if (anyMutationPending) {
+    if (anyMutationPending || mutationLocked()) {
       return
     }
     setConfirmingArchive(true)
@@ -626,7 +629,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleCancelArchive = (): void => {
-    if (archiveMutation.isPending) {
+    if (archiveMutation.isPending || mutationLocked()) {
       return
     }
     setConfirmingArchive(false)
@@ -637,14 +640,14 @@ export function IssueWorkspacePage(): ReactElement {
     issueKey: string,
     targetStatusCode: string,
     targetIndex: number,
-  ): void => {
-    if (anyMutationPending) {
-      return
+  ): boolean => {
+    if (anyMutationPending || mutationLocked()) {
+      return false
     }
     const issues = issuesQuery.data?.items
     const statuses = projectQuery.data?.workflowStatuses ?? []
     if (issues === undefined || statuses.length === 0) {
-      return
+      return false
     }
     const result = computeMove({
       workflowStatuses: statuses,
@@ -656,10 +659,10 @@ export function IssueWorkspacePage(): ReactElement {
     // A no-op or invalid/unknown target never reaches the API and never
     // announces a successful move.
     if (result.kind !== 'move') {
-      return
+      return false
     }
     if (!tryAcquireMutation('move')) {
-      return
+      return false
     }
     moveMutation.mutate({
       issueKey,
@@ -669,6 +672,7 @@ export function IssueWorkspacePage(): ReactElement {
       expectedVersion: result.expectedVersion,
       targetIndex: result.targetIndex,
     })
+    return true
   }
 
   const selectedIssue = issueQuery.data

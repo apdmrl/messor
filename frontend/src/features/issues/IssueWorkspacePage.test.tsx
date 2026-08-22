@@ -2447,6 +2447,181 @@ describe('IssueWorkspacePage', () => {
           expect(createIssueMock).toHaveBeenCalled()
         })
       })
+
+      it('allows only one move in the same tick (move vs move), then releases for a later move', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        // Open two cards' move menus so two independently valid move actions
+        // are available in the same tick.
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-2 için taşıma menüsü' }))
+        const nextButtons = screen.getAllByRole('button', { name: 'Sonraki sütuna taşı' })
+        expect(nextButtons.length).toBeGreaterThanOrEqual(2)
+
+        act(() => {
+          fireEvent.click(nextButtons[0])
+          fireEvent.click(nextButtons[1])
+        })
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+
+        // Resolving the first move releases the lock so a later move can start.
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+        await screen.findByText('MES-1 taşındı.')
+
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(2))
+      })
+
+      it('does not open the create form in the same tick as a move, then allows it after release', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        })
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        // mutationLocked is the synchronous authority: the create form must not appear.
+        expect(screen.queryByRole('button', { name: 'Oluştur' })).not.toBeInTheDocument()
+
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+        await screen.findByText('MES-1 taşındı.')
+        // After release the same action becomes available.
+        fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        expect(screen.getByRole('button', { name: 'Oluştur' })).toBeInTheDocument()
+      })
+
+      it('does not change selection in the same tick as a create submit', async () => {
+        let resolveCreate: (value: Issue) => void = () => {}
+        createIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveCreate = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        fireEvent.change(screen.getByLabelText('Başlık'), {
+          target: { value: 'Third task' },
+        })
+        const selectSecond = screen.getByRole('button', {
+          name: 'MES-2, Second bug, Sürüyor',
+        })
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Oluştur' }))
+          fireEvent.click(selectSecond)
+        })
+        await waitFor(() => expect(createIssueMock).toHaveBeenCalledTimes(1))
+        // handleSelect is gated by mutationLocked; selection stays unchanged.
+        expect(
+          screen.queryByRole('heading', { name: 'MES-2', level: 3 }),
+        ).not.toBeInTheDocument()
+        resolveCreate(makeIssue({ issueKey: 'MES-3', number: 3, title: 'Third task' }))
+      })
+
+      it('does not open the edit form in the same tick as a move', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
+        await screen.findByRole('button', { name: 'Düzenle' })
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+        })
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(screen.queryByRole('button', { name: 'Güncelle' })).not.toBeInTheDocument()
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+      })
+
+      it('does not open the archive confirmation in the same tick as a move', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
+        await screen.findByRole('button', { name: 'Arşivle' })
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Arşivle' }))
+        })
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(
+          screen.queryByRole('button', { name: 'Arşivlemeyi onayla' }),
+        ).not.toBeInTheDocument()
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+      })
+
+      it('a blocked move does not clear an open edit form and its draft', async () => {
+        let resolveUpdate: (value: Issue) => void = () => {}
+        updateIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveUpdate = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
+        await screen.findByRole('button', { name: 'Düzenle' })
+        fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+        fireEvent.change(screen.getByLabelText('Başlık'), {
+          target: { value: 'Renamed' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        })
+        await waitFor(() => expect(updateIssueMock).toHaveBeenCalledTimes(1))
+        expect(moveIssueMock).not.toHaveBeenCalled()
+        // The blocked move must not dismantle the edit form or its draft.
+        expect(screen.getByLabelText('Başlık')).toHaveValue('Renamed')
+        expect(
+          screen.getByRole('button', { name: 'Güncelleniyor…' }),
+        ).toBeInTheDocument()
+        resolveUpdate({ ...issue1, title: 'Renamed', version: 1 })
+      })
     })
 
     it('applies a completed move only to the moved issue, keeping selection stable', async () => {
