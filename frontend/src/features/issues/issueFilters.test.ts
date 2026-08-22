@@ -3,8 +3,10 @@ import {
   DEFAULT_FILTERS,
   MY_WORK_FILTER_CONTEXT,
   PROJECT_FILTER_CONTEXT,
+  canReorderBoard,
   canonicalQueryString,
   parseFilters,
+  serializeApiFilters,
   serializeFilters,
 } from './issueFilters'
 import type { IssueFilterContext, IssueFilterState } from './issueFilters'
@@ -215,5 +217,74 @@ describe('issueFilters parse/normalize/serialize', () => {
     const parsed = parseFilters(new URLSearchParams('project=ALPHA'), MY)
     expect(parsed.project).toBe('ALPHA')
     expect(canonicalQueryString(parsed, MY)).toBe('?project=ALPHA')
+  })
+
+  // ------------------------------------------------------------------
+  // API request serializer (always sends the effective page/size)
+  // ------------------------------------------------------------------
+
+  it('API serializer always sends the effective page and size explicitly', () => {
+    // Default project state: URL is empty, but the API request must carry
+    // size=100 so the backend never falls back to its default of 20.
+    const projectDefaults: IssueFilterState = { ...DEFAULT_FILTERS, size: 100 }
+    expect(canonicalQueryString(projectDefaults, PROJ)).toBe('')
+    const api = serializeApiFilters(projectDefaults, PROJ)
+    expect(api.get('size')).toBe('100')
+    expect(api.get('page')).toBe('0')
+
+    // My Work default: API sends size=20 explicitly (backend default stays 20).
+    const myDefaults: IssueFilterState = { ...DEFAULT_FILTERS, size: 20 }
+    expect(canonicalQueryString(myDefaults, MY)).toBe('')
+    const myApi = serializeApiFilters(myDefaults, MY)
+    expect(myApi.get('size')).toBe('20')
+    expect(myApi.get('page')).toBe('0')
+  })
+
+  it('API serializer respects the same context exclusions as the URL', () => {
+    // Project context never sends project; My Work never sends assignee.
+    const state: IssueFilterState = {
+      project: 'ALPHA',
+      type: 'BUG',
+      status: 'TO_DO',
+      assignee: 'user-1',
+      archive: 'active',
+      sort: { field: 'number', direction: 'asc' },
+      page: 0,
+      size: 100,
+    }
+    const projApi = serializeApiFilters(state, PROJ)
+    expect(projApi.has('project')).toBe(false)
+    expect(projApi.get('assignee')).toBe('user-1')
+
+    const myApi = serializeApiFilters(state, MY)
+    expect(myApi.get('project')).toBe('ALPHA')
+    expect(myApi.has('assignee')).toBe(false)
+  })
+
+  // ------------------------------------------------------------------
+  // Move completeness invariant
+  // ------------------------------------------------------------------
+
+  it('allows board reordering only on a complete active column', () => {
+    const full: IssueFilterState = {
+      project: null,
+      type: null,
+      status: null,
+      assignee: null,
+      archive: 'active',
+      sort: { field: 'number', direction: 'asc' },
+      page: 0,
+      size: 100,
+    }
+    expect(canReorderBoard(full, 1)).toBe(true)
+
+    expect(canReorderBoard({ ...full, archive: 'all' }, 1)).toBe(false)
+    expect(canReorderBoard({ ...full, archive: 'archived' }, 1)).toBe(false)
+    expect(canReorderBoard({ ...full, type: 'BUG' }, 1)).toBe(false)
+    expect(canReorderBoard({ ...full, status: 'TO_DO' }, 1)).toBe(false)
+    expect(canReorderBoard({ ...full, assignee: 'user-1' }, 1)).toBe(false)
+    expect(canReorderBoard({ ...full, page: 1 }, 1)).toBe(false)
+    expect(canReorderBoard(full, 2)).toBe(false)
+    expect(canReorderBoard(full, 0)).toBe(false)
   })
 })

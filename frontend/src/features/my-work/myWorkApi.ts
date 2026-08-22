@@ -1,6 +1,6 @@
 import { apiRequest } from '../../app/apiClient'
 import type { IssuePage } from '../issues/types'
-import { serializeFilters, MY_WORK_FILTER_CONTEXT } from '../issues/issueFilters'
+import { serializeApiFilters, MY_WORK_FILTER_CONTEXT } from '../issues/issueFilters'
 import type { IssueFilterState } from '../issues/issueFilters'
 
 /**
@@ -13,6 +13,6 @@ import type { IssueFilterState } from '../issues/issueFilters'
  * assignee parameter.</p>
  */
 export async function listMyWork(filters: IssueFilterState): Promise<IssuePage> {
-  const query = serializeFilters(filters, MY_WORK_FILTER_CONTEXT).toString()
-  return apiRequest<IssuePage>(`/api/my-work${query ? `?${query}` : ''}`)
+  const query = serializeApiFilters(filters, MY_WORK_FILTER_CONTEXT).toString()
+  return apiRequest<IssuePage>(`/api/my-work?${query}`)
 }

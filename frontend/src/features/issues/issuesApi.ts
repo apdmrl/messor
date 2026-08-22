@@ -1,8 +1,5 @@
 import { apiRequest } from '../../app/apiClient'
-import {
-  serializeFilters,
-  PROJECT_FILTER_CONTEXT,
-} from './issueFilters'
+import { serializeApiFilters, PROJECT_FILTER_CONTEXT } from './issueFilters'
 import type { IssueFilterState } from './issueFilters'
 import type {
   ArchiveIssueInput,
@@ -24,16 +21,18 @@ function encodeSegment(value: string): string {
 
 /**
  * List project issues with the URL-backed filters. The project key comes from
- * the route, so the project context never emits a project parameter; only
- * allowlisted, non-default values are sent.
+ * the route, so the project context never emits a project parameter. The API
+ * serializer always sends the effective page/size explicitly (size=100 by
+ * default for the workspace) so the request never relies on the backend's
+ * fallback default of 20.
  */
 export async function listIssues(
   projectKey: string,
   filters: IssueFilterState,
 ): Promise<IssuePage> {
-  const query = serializeFilters(filters, PROJECT_FILTER_CONTEXT).toString()
+  const query = serializeApiFilters(filters, PROJECT_FILTER_CONTEXT).toString()
   return apiRequest<IssuePage>(
-    `${PROJECTS_URL}/${encodeSegment(projectKey)}/issues${query ? `?${query}` : ''}`,
+    `${PROJECTS_URL}/${encodeSegment(projectKey)}/issues?${query}`,
   )
 }
 

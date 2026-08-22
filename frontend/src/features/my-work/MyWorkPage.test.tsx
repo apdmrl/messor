@@ -3,7 +3,7 @@ import type { Mock } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import type { PageResponse, ProjectDetail, ProjectMember, ProjectSummary } from '../projects/types'
 import type { Issue, IssuePage } from '../issues/types'
 import { MyWorkPage } from './MyWorkPage'
@@ -116,23 +116,28 @@ const getProjectMock = getProject as Mock
 const listProjectMembersMock = listProjectMembers as Mock
 const listMyWorkMock = listMyWork as Mock
 
-function renderMyWork(initialEntry = '/my-work'): void {
+function renderMyWork(
+  initialEntry = '/my-work',
+): ReturnType<typeof createMemoryRouter> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  const memoryRouter = createMemoryRouter(
+    [
+      { path: '/my-work', element: <MyWorkPage /> },
+      {
+        path: '/projects/:projectKey/issues/:issueKey',
+        element: <div>Drawer route rendered</div>,
+      },
+    ],
+    { initialEntries: [initialEntry] },
+  )
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route path="/my-work" element={<MyWorkPage />} />
-          <Route
-            path="/projects/:projectKey/issues/:issueKey"
-            element={<div>Drawer route rendered</div>}
-          />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={memoryRouter} />
     </QueryClientProvider>,
   )
+  return memoryRouter
 }
 
 describe('MyWorkPage', () => {
@@ -276,5 +281,25 @@ describe('MyWorkPage', () => {
     await screen.findByText('First task')
     const lastCall = listMyWorkMock.mock.calls.at(-1)?.[0] as { assignee: string | null }
     expect(lastCall.assignee).toBeNull()
+  })
+
+  it('canonicalizes a hostile direct URL by replace, without a history entry', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    const router = renderMyWork('/my-work?assignee=victim&page=1&page=2')
+
+    await screen.findByText('First task')
+    // The URL is normalized to the canonical (empty) search via replace.
+    await waitFor(() => {
+      expect(router.state.location.search).toBe('')
+    })
+    // The request used only the canonical effective state (no assignee).
+    const lastCall = listMyWorkMock.mock.calls.at(-1)?.[0] as {
+      assignee: string | null
+      page: number
+    }
+    expect(lastCall.assignee).toBeNull()
+    expect(lastCall.page).toBe(0)
+    // Canonicalization must not loop (listMyWork fired once).
+    expect(listMyWorkMock).toHaveBeenCalledTimes(1)
   })
 })

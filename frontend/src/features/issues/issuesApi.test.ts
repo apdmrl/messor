@@ -94,6 +94,29 @@ describe('issuesApi', () => {
     )
   })
 
+  it('default project workspace request sends the effective size (100) explicitly', async () => {
+    // With no URL params the effective project size is 100; the API request must
+    // send size=100 so the backend never falls back to its default of 20.
+    const defaultState = {
+      project: null,
+      type: null,
+      status: null,
+      assignee: null,
+      archive: 'active' as const,
+      sort: { field: 'number' as const, direction: 'asc' as const },
+      page: 0,
+      size: 100,
+    }
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ items: [], page: 0, size: 100, totalItems: 0, totalPages: 0 }))
+
+    const { listIssues } = await loadModules()
+    await listIssues('MES', defaultState)
+
+    const url = (fetchSpy.mock.calls[0][0] as string)
+    expect(url).toContain('/api/projects/MES/issues?')
+    expect(url).toContain('size=100')
+  })
+
   it('listIssues encodes the project key path segment', async () => {
     fetchSpy.mockResolvedValueOnce(
       jsonResponse({

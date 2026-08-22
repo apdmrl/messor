@@ -498,9 +498,9 @@ describe('IssueWorkspacePage', () => {
         })
       })
       await waitFor(() => {
+        // All issue-list filter variants are invalidated by prefix.
         expect(invalidateSpy).toHaveBeenCalledWith({
-          queryKey: ['issues', 'MES', ISSUE_FILTERS],
-          exact: true,
+          queryKey: ['issues', 'MES'],
         })
       })
       // the new issue is selected and its detail/activity fetched
@@ -599,9 +599,9 @@ describe('IssueWorkspacePage', () => {
           queryKey: ['issue', 'MES-1', 'activity'],
           exact: true,
         })
+        // All issue-list filter variants are invalidated by prefix.
         expect(invalidateSpy).toHaveBeenCalledWith({
-          queryKey: ['issues', 'MES', ISSUE_FILTERS],
-          exact: true,
+          queryKey: ['issues', 'MES'],
         })
       })
       // form closes after success
@@ -2203,8 +2203,7 @@ describe('IssueWorkspacePage', () => {
       })
       await waitFor(() => {
         expect(invalidateSpy).toHaveBeenCalledWith({
-          queryKey: ['issues', 'MES', ISSUE_FILTERS],
-          exact: true,
+          queryKey: ['issues', 'MES'],
         })
         expect(invalidateSpy).toHaveBeenCalledWith({
           queryKey: ['issue', 'MES-1'],
@@ -2845,6 +2844,29 @@ describe('IssueWorkspacePage URL filters', () => {
     expect(
       screen.queryByRole('button', { name: /taşıma menüsü/i }),
     ).toBeNull()
+  })
+
+  it('disables all movement controls when a type filter is active', async () => {
+    listIssuesMock.mockResolvedValue(pageWithIssues)
+    renderWorkspace('/projects/MES/board?type=STORY')
+
+    await screen.findByText('First task')
+
+    // A filtered board is not the complete active column, so no card may be
+    // dragged or moved.
+    expect(screen.queryByRole('button', { name: /sürükle/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /taşıma menüsü/i })).toBeNull()
+  })
+
+  it('does not call the move API from a filtered view', async () => {
+    listIssuesMock.mockResolvedValue(pageWithIssues)
+    renderWorkspace('/projects/MES/board?status=TO_DO')
+
+    await screen.findByText('First task')
+    // With movement controls absent, keyboard/pointer drags and the move menu
+    // cannot initiate a move.
+    expect(screen.queryByRole('button', { name: /sürükle/i })).toBeNull()
+    expect(moveIssueMock).not.toHaveBeenCalled()
   })
 })
 

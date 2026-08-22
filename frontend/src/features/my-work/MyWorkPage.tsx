@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { listProjects } from '../projects/projectsApi'
 import { getProject, listProjectMembers } from '../projects/projectsApi'
 import { parseFilters, serializeFilters, MY_WORK_FILTER_CONTEXT } from '../issues/issueFilters'
@@ -37,6 +37,20 @@ export function MyWorkPage(): ReactElement {
     () => parseFilters(searchParams, MY_WORK_FILTER_CONTEXT),
     [searchParams],
   )
+
+  // Real URL canonicalization: drop unsupported/hostile/repeated params (e.g.
+  // an assignee target, a repeated page) by rewriting to the canonical search
+  // via replace, so no extra history entry is added. It converges (canonical
+  // parse -> canonical serialize) so it cannot loop.
+  const canonicalSearch = useMemo(
+    () => serializeFilters(filters, MY_WORK_FILTER_CONTEXT).toString(),
+    [filters],
+  )
+  useEffect(() => {
+    if (searchParams.toString() !== canonicalSearch) {
+      setSearchParams(canonicalSearch, { replace: true })
+    }
+  }, [searchParams, canonicalSearch, setSearchParams])
 
   const myWorkQuery = useQuery({
     queryKey: ['my-work', filters],

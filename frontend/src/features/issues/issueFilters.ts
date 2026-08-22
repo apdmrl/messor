@@ -219,3 +219,67 @@ export function canonicalQueryString(
   const query = serializeFilters(filters, context).toString()
   return query === '' ? '' : `?${query}`
 }
+
+/**
+ * Serialize a filter state for an actual API request.
+ *
+ * <p>Unlike the clean URL serializer, this ALWAYS emits {@code page} and
+ * {@code size} explicitly, so the request's size is exactly the effective size
+ * for the context and never depends on the backend's fallback default. The
+ * project workspace context keeps {@code size=100} explicit (its board-friendly
+ * default) while still omitting {@code size} from the clean URL; the My Work
+ * context sends {@code size=20} explicitly. The same context exclusions apply
+ * (project omitted for the workspace, assignee omitted for My Work).</p>
+ */
+export function serializeApiFilters(
+  filters: IssueFilterState,
+  context: IssueFilterContext,
+): URLSearchParams {
+  const params = new URLSearchParams()
+  if (context.includeProject && filters.project !== null) {
+    params.set('project', filters.project)
+  }
+  if (filters.type !== null) {
+    params.set('type', filters.type)
+  }
+  if (filters.status !== null) {
+    params.set('status', filters.status)
+  }
+  if (context.includeAssignee && filters.assignee !== null) {
+    params.set('assignee', filters.assignee)
+  }
+  if (filters.archive !== 'active') {
+    params.set('archive', filters.archive)
+  }
+  if (filters.sort.field !== 'number' || filters.sort.direction !== 'asc') {
+    params.set('sort', `${filters.sort.field},${filters.sort.direction}`)
+  }
+  params.set('page', String(filters.page))
+  params.set('size', String(filters.size))
+  return params
+}
+
+/**
+ * Move-completeness invariant for the Kanban board.
+ *
+ * <p>Board reordering is only safe when the rendered issue set is the COMPLETE
+ * active column: no archive/type/status/assignee filter, page 0, and a single
+ * page ({@code totalPages <= 1}) so every issue in each active column is
+ * present. Otherwise the frontend's subset index would not map to the backend's
+ * full-column ordering. {@code totalPages} of 0 or >1 both disable reordering.
+ * (The board always orders columns by rank regardless of the sort param, so any
+ * sort is safe once the full set is present.)</p>
+ */
+export function canReorderBoard(
+  filters: IssueFilterState,
+  totalPages: number,
+): boolean {
+  return (
+    filters.archive === 'active' &&
+    filters.type === null &&
+    filters.status === null &&
+    filters.assignee === null &&
+    filters.page === 0 &&
+    totalPages === 1
+  )
+}

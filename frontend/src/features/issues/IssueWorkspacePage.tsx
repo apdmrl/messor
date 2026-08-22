@@ -25,6 +25,7 @@ import { ProjectBoard } from './ProjectBoard'
 import {
   parseFilters,
   serializeFilters,
+  canReorderBoard,
   PROJECT_FILTER_CONTEXT,
 } from './issueFilters'
 import type { IssueFilterState } from './issueFilters'
@@ -106,6 +107,22 @@ export function IssueWorkspacePage(): ReactElement {
     },
     [filters, setSearchParams],
   )
+
+  // Real URL canonicalization: parse/serialize alone do not change the browser
+  // URL. When the current query string differs from the canonical effective
+  // form (hostile/repeated/unsupported params, non-default ordering), rewrite it
+  // via replace so no extra history entry is added and back/forward still
+  // restores the prior screen. It converges (canonical parse -> canonical
+  // serialize) so it cannot loop.
+  const canonicalSearch = useMemo(
+    () => serializeFilters(filters, PROJECT_FILTER_CONTEXT).toString(),
+    [filters],
+  )
+  useEffect(() => {
+    if (searchParams.toString() !== canonicalSearch) {
+      setSearchParams(canonicalSearch, { replace: true })
+    }
+  }, [searchParams, canonicalSearch, setSearchParams])
 
   const [activeForm, setActiveForm] = useState<'create' | 'edit' | null>(null)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
@@ -259,6 +276,12 @@ export function IssueWorkspacePage(): ReactElement {
     projectQuery.data?.currentUserRole === 'PROJECT_LEAD' ||
     projectQuery.data?.currentUserRole === 'MEMBER'
 
+  // Reordering is only safe on a complete, unfiltered, single-page active
+  // board; otherwise the rendered subset index would not map to the backend's
+  // full-column ordering, so movement controls are suppressed entirely.
+  const boardCanMove = canMutate && canReorderBoard(filters, issuesQuery.data?.totalPages ?? 0)
+  const boardMoveLocked = canMutate && !boardCanMove
+
   const statusCodes = useMemo(
     () =>
       new Set<string>(
@@ -301,8 +324,7 @@ export function IssueWorkspacePage(): ReactElement {
         type: 'active',
       }),
       queryClient.refetchQueries({
-        queryKey: ['issues', key, filters],
-        exact: true,
+        queryKey: ['issues', key],
         type: 'active',
       }),
     ])
@@ -326,8 +348,7 @@ export function IssueWorkspacePage(): ReactElement {
       setBannerAlert(null)
       setActiveForm(null)
       await queryClient.invalidateQueries({
-        queryKey: ['issues', key, filters],
-        exact: true,
+        queryKey: ['issues', key],
       })
       openedFromBoardRef.current = true
       focusReturnIssueKeyRef.current = issue.issueKey
@@ -368,8 +389,7 @@ export function IssueWorkspacePage(): ReactElement {
           exact: true,
         }),
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, filters],
-          exact: true,
+          queryKey: ['issues', key],
         }),
       ])
       setFocusIntent('edit')
@@ -411,8 +431,7 @@ export function IssueWorkspacePage(): ReactElement {
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, filters],
-          exact: true,
+          queryKey: ['issues', key],
         }),
         queryClient.invalidateQueries({
           queryKey: ['issue', archived.issueKey],
@@ -559,8 +578,7 @@ export function IssueWorkspacePage(): ReactElement {
       releaseMutation('move')
       void Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, filters],
-          exact: true,
+          queryKey: ['issues', key],
         }),
         queryClient.invalidateQueries({
           queryKey: ['issue', vars.issueKey],
@@ -741,6 +759,14 @@ export function IssueWorkspacePage(): ReactElement {
     if (anyMutationPending || mutationLocked()) {
       return false
     }
+    // Fail-closed: reordering is only valid on a complete, unfiltered,
+    // single-page active board. A filtered/paginated subset index does not map
+    // to the backend's full-column ordering, so the move is refused regardless
+    // of how it was invoked (pointer/keyboard DnD, move menu, or a stale
+    // callback).
+    if (!boardCanMove) {
+      return false
+    }
     const issues = issuesQuery.data?.items
     const statuses = projectQuery.data?.workflowStatuses ?? []
     if (issues === undefined || statuses.length === 0) {
@@ -865,6 +891,7 @@ export function IssueWorkspacePage(): ReactElement {
             statuses={statusOptions}
             members={memberOptions}
             showProject={false}
+            disabled={anyMutationPending}
             onChange={updateFilters}
           />
         )}
@@ -922,7 +949,7 @@ export function IssueWorkspacePage(): ReactElement {
               workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
               issues={issuesQuery.data.items}
               selectedIssueKey={routeIssueKey}
-              canMove={canMutate}
+              canMove={boardCanMove}
               moveDisabled={anyMutationPending}
               selectionDisabled={anyMutationPending}
               includeArchived={filters.archive !== 'active'}
@@ -931,6 +958,12 @@ export function IssueWorkspacePage(): ReactElement {
               statusLabel={statusLabel}
               assigneeLabel={assigneeLabel}
             />
+          )}
+
+          {boardMoveLocked && (
+            <p className="issue-workspace__move-note" role="note">
+              Filtrelenmiş veya sayfalanmış görünümde kartlar taşınamaz.
+            </p>
           )}
 
           {issuesQuery.isSuccess && (issuesQuery.data.totalPages ?? 0) > 1 && (

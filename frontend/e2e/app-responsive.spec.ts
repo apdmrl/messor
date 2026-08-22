@@ -308,12 +308,11 @@ test('project workspace filters drive the request and archived cards are read-on
   expect(params.get('type')).toBe('BUG')
   expect(params.get('archive')).toBe('archived')
 
-  // The archived card (ALPHA-2) renders but exposes no drag or move controls,
-  // while the active cards keep theirs.
+  // An archived filter is not a complete active board, so NO card (archived or
+  // active) exposes a drag handle or move menu.
   await expect(page.getByText('My archived task')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'ALPHA-2 sürükle' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'ALPHA-2 için taşıma menüsü' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'ALPHA-1 sürükle' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /sürükle/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /taşıma menüsü/i })).toHaveCount(0)
 
   await expectNoHorizontalOverflow(page)
 })
@@ -376,4 +375,51 @@ test('project workspace pagination has no duplicates or missing rows', async ({ 
     expect(seen.has(`ALPHA-${n}`), `must include ALPHA-${n}`).toBe(true)
   }
   await expectNoHorizontalOverflow(page)
+})
+
+/* ============================================================
+   9. Default project workspace request sends the effective size
+      (100), so the board is never truncated to the backend default
+      of 20.
+   ============================================================ */
+test('default project workspace request sends size=100 (no 20 truncation)', async ({ page }) => {
+  await mockBackend(page)
+  const requestPromise = page.waitForRequest((req) =>
+    req.url().includes('/api/projects/ALPHA/issues'),
+  )
+  await page.goto('/projects/ALPHA/board')
+  const request = await requestPromise
+  const params = new URL(request.url()).searchParams
+  expect(params.get('size')).toBe('100')
+  expect(params.get('page')).toBe('0')
+})
+
+/* ============================================================
+   10. A filtered board disables movement controls fail-closed and
+       explains why, across every viewport.
+   ============================================================ */
+test('filtered board disables move controls fail-closed', async ({ page }) => {
+  await mockBackend(page)
+  await page.goto('/projects/ALPHA/board?type=BUG')
+
+  await expect(page.getByText('My active task')).toBeVisible()
+  // No drag handles and no move menus on a filtered board.
+  await expect(page.getByRole('button', { name: /sürükle/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /taşıma menüsü/i })).toHaveCount(0)
+  await expect(page.getByText('Filtrelenmiş veya sayfalanmış görünümde kartlar taşınamaz.')).toBeVisible()
+
+  await expectNoHorizontalOverflow(page)
+})
+
+/* ============================================================
+   11. My Work canonicalizes a hostile direct URL by replace.
+   ============================================================ */
+test('My Work canonicalizes a hostile direct URL', async ({ page }) => {
+  await mockBackend(page)
+  await page.goto('/my-work?assignee=victim&page=1&page=2')
+
+  await expect(page.getByRole('heading', { name: 'Görevlerim', level: 2 })).toBeVisible()
+  // The URL is rewritten to the canonical (empty) search via replace.
+  await page.waitForURL((url) => new URL(url.toString()).searchParams.size === 0)
+  expect(new URL(page.url()).search).toBe('')
 })

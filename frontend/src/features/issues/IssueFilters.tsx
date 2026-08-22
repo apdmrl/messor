@@ -25,6 +25,8 @@ interface IssueFiltersProps {
   members: MemberOption[]
   /** When true, a project selector is shown; otherwise it is omitted. */
   showProject: boolean
+  /** Disables every control (e.g. while a mutation is pending). */
+  disabled?: boolean
   onChange: (patch: Partial<IssueFilterState>) => void
 }
 
@@ -53,6 +55,7 @@ export function IssueFilters({
   statuses,
   members,
   showProject,
+  disabled = false,
   onChange,
 }: IssueFiltersProps): ReactElement {
   const select = (
@@ -71,6 +74,8 @@ export function IssueFilters({
         id={id}
         className="issue-filters__select"
         value={value}
+        disabled={disabled}
+        aria-disabled={disabled}
         onChange={(event) =>
           onChange({ [stateKey]: event.target.value || null } as Partial<IssueFilterState>)
         }
@@ -132,6 +137,8 @@ export function IssueFilters({
           id="filter-sort"
           className="issue-filters__select"
           value={sortDirectionValue}
+          disabled={disabled}
+          aria-disabled={disabled}
           onChange={(event) => {
             const [field, direction] = event.target.value.split(',')
             onChange({ sort: { field: field as SortField, direction: direction as 'asc' | 'desc' } })
