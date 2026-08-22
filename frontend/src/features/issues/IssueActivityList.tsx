@@ -5,6 +5,7 @@ import type { IssueActivity, IssueActivityType, IssueType } from './types'
 interface IssueActivityListProps {
   activities: IssueActivity[]
   statusLabel: (code: string) => string
+  statusCodes: ReadonlySet<string>
   assigneeLabel: (id: string | null) => string
 }
 
@@ -27,12 +28,14 @@ function changedFieldsLabel(raw: unknown): string {
   if (!Array.isArray(raw)) {
     return FALLBACK_FIELDS
   }
-  const labels: string[] = []
+  // Any non-string or non-allowlisted entry invalidates the whole summary:
+  // known labels are never silently mixed with a dropped unknown value.
   for (const field of raw) {
-    if (typeof field === 'string' && field in UPDATED_FIELD_LABELS) {
-      labels.push(UPDATED_FIELD_LABELS[field])
+    if (typeof field !== 'string' || !Object.hasOwn(UPDATED_FIELD_LABELS, field)) {
+      return FALLBACK_FIELDS
     }
   }
+  const labels = raw.map((field) => UPDATED_FIELD_LABELS[field])
   if (labels.length === 0) {
     return FALLBACK_FIELDS
   }
@@ -54,14 +57,30 @@ function assigneeLabelSafe(
 
 function statusLabelSafe(
   raw: unknown,
+  statusCodes: ReadonlySet<string>,
   statusLabel: (code: string) => string,
 ): string {
-  return typeof raw === 'string' ? statusLabel(raw) : FALLBACK_STATUS
+  if (typeof raw === 'string' && statusCodes.has(raw)) {
+    return statusLabel(raw)
+  }
+  return FALLBACK_STATUS
+}
+
+function statusCodeLabel(
+  raw: unknown,
+  statusCodes: ReadonlySet<string>,
+  statusLabel: (code: string) => string,
+): string {
+  if (typeof raw === 'string' && statusCodes.has(raw)) {
+    return statusLabel(raw)
+  }
+  return 'bilinmeyen'
 }
 
 function activityText(
   activity: IssueActivity,
   statusLabel: (code: string) => string,
+  statusCodes: ReadonlySet<string>,
   assigneeLabel: (id: string | null) => string,
 ): string {
   const summary = activity.summary ?? {}
@@ -86,7 +105,7 @@ function activityText(
         rawType === 'STORY' || rawType === 'TASK' || rawType === 'BUG'
           ? issueTypeLabel(rawType as IssueType)
           : 'bilinmeyen tür'
-      const status = statusLabelSafe(summary.statusCode, statusLabel)
+      const status = statusLabelSafe(summary.statusCode, statusCodes, statusLabel)
       const assignee = assigneeLabelSafe(summary.assigneeId, assigneeLabel)
       return `${activityLabel('CREATED')}: ${type}, ${status}, ${assignee}`
     }
@@ -96,18 +115,12 @@ function activityText(
       return `${activityLabel('UPDATED')}: ${changed}, ${assignee}`
     }
     case 'MOVED': {
-      const from =
-        typeof summary.fromStatusCode === 'string'
-          ? statusLabel(summary.fromStatusCode)
-          : 'bilinmeyen'
-      const to =
-        typeof summary.toStatusCode === 'string'
-          ? statusLabel(summary.toStatusCode)
-          : 'bilinmeyen'
+      const from = statusCodeLabel(summary.fromStatusCode, statusCodes, statusLabel)
+      const to = statusCodeLabel(summary.toStatusCode, statusCodes, statusLabel)
       return `${activityLabel('MOVED')}: ${from} → ${to}`
     }
     case 'ARCHIVED': {
-      const status = statusLabelSafe(summary.statusCode, statusLabel)
+      const status = statusLabelSafe(summary.statusCode, statusCodes, statusLabel)
       return `${activityLabel('ARCHIVED')}: ${status}`
     }
     default: {
@@ -119,6 +132,7 @@ function activityText(
 export function IssueActivityList({
   activities,
   statusLabel,
+  statusCodes,
   assigneeLabel,
 }: IssueActivityListProps): ReactElement {
   return (
@@ -127,10 +141,10 @@ export function IssueActivityList({
         <li
           key={activity.id}
           className="issue-activity__item"
-          aria-label={`${activity.createdAt} ${activityText(activity, statusLabel, assigneeLabel)}`}
+          aria-label={`${activity.createdAt} ${activityText(activity, statusLabel, statusCodes, assigneeLabel)}`}
         >
           <span className="issue-activity__text">
-            {activityText(activity, statusLabel, assigneeLabel)}
+            {activityText(activity, statusLabel, statusCodes, assigneeLabel)}
           </span>
           <span className="issue-activity__time">
             {new Date(activity.createdAt).toLocaleString('tr-TR')}

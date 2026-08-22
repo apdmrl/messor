@@ -9,6 +9,7 @@ interface IssueDetailsPanelProps {
   activityLoading: boolean
   activityError: boolean
   statusLabel: (code: string) => string
+  statusCodes: ReadonlySet<string>
   assigneeLabel: (id: string | null) => string
   canMutate: boolean
   editing: boolean
@@ -30,6 +31,7 @@ export function IssueDetailsPanel({
   activityLoading,
   activityError,
   statusLabel,
+  statusCodes,
   assigneeLabel,
   canMutate,
   editing,
@@ -72,7 +74,7 @@ export function IssueDetailsPanel({
 
       {canMutate && !issue.archived && (
         <div className="issue-details__actions">
-          {!editing && (
+          {!editing && !confirmingArchive && (
             <button
               type="button"
               className="issue-details__action"
@@ -145,6 +147,7 @@ export function IssueDetailsPanel({
           <IssueActivityList
             activities={activity}
             statusLabel={statusLabel}
+            statusCodes={statusCodes}
             assigneeLabel={assigneeLabel}
           />
         )}

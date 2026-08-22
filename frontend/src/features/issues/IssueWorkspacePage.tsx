@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../app/apiClient'
 import { getProject, listProjectMembers } from '../projects/projectsApi'
 import type { ProjectMember } from '../projects/types'
@@ -79,9 +79,6 @@ export function IssueWorkspacePage(): ReactElement {
   const archiveCancelRef = useRef<HTMLButtonElement>(null)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const listHeadingRef = useRef<HTMLHeadingElement>(null)
-  const mutationScopeRef = useRef<{ issueKey: string; version: number } | null>(
-    null,
-  )
 
   const projectQuery = useQuery({
     queryKey: ['projects', key],
@@ -116,6 +113,14 @@ export function IssueWorkspacePage(): ReactElement {
   const canMutate =
     projectQuery.data?.currentUserRole === 'PROJECT_LEAD' ||
     projectQuery.data?.currentUserRole === 'MEMBER'
+
+  const statusCodes = useMemo(
+    () =>
+      new Set<string>(
+        (projectQuery.data?.workflowStatuses ?? []).map((s) => s.code),
+      ),
+    [projectQuery.data],
+  )
 
   const statusLabel = useCallback(
     (code: string): string => {
@@ -188,18 +193,18 @@ export function IssueWorkspacePage(): ReactElement {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (values: IssueFormValues) => {
-      const scope = mutationScopeRef.current
-      if (scope === null) {
-        throw new Error('Seçili issue bulunamadı.')
-      }
-      return updateIssue(scope.issueKey, {
-        title: values.title,
-        description: values.description === '' ? null : values.description,
-        assigneeId: values.assigneeId === '' ? null : values.assigneeId,
-        expectedVersion: scope.version,
-      })
-    },
+    mutationFn: (vars: {
+      values: IssueFormValues
+      issueKey: string
+      version: number
+    }) =>
+      updateIssue(vars.issueKey, {
+        title: vars.values.title,
+        description:
+          vars.values.description === '' ? null : vars.values.description,
+        assigneeId: vars.values.assigneeId === '' ? null : vars.values.assigneeId,
+        expectedVersion: vars.version,
+      }),
     onSuccess: async (updated) => {
       setFormError(null)
       setBannerAlert(null)
@@ -220,16 +225,15 @@ export function IssueWorkspacePage(): ReactElement {
       ])
       setFocusIntent('edit')
     },
-    onError: async (error: unknown) => {
-      const scope = mutationScopeRef.current
-      if (scope !== null && error instanceof ApiError) {
+    onError: async (error: unknown, vars) => {
+      if (error instanceof ApiError) {
         if (error.code === 'VERSION_CONFLICT') {
-          await refetchIssueCaches(scope.issueKey)
+          await refetchIssueCaches(vars.issueKey)
           setFormError(ERROR_MESSAGES.VERSION_CONFLICT)
           return
         }
         if (error.code === 'ISSUE_ARCHIVED') {
-          await refetchIssueCaches(scope.issueKey)
+          await refetchIssueCaches(vars.issueKey)
           setActiveForm(null)
           setBannerAlert({ kind: 'info', message: ERROR_MESSAGES.ISSUE_ARCHIVED })
           setFocusIntent('list-heading')
@@ -241,15 +245,10 @@ export function IssueWorkspacePage(): ReactElement {
   })
 
   const archiveMutation = useMutation({
-    mutationFn: () => {
-      const scope = mutationScopeRef.current
-      if (scope === null) {
-        throw new Error('Seçili issue bulunamadı.')
-      }
-      return archiveIssue(scope.issueKey, {
-        expectedVersion: scope.version,
-      })
-    },
+    mutationFn: (vars: { issueKey: string; version: number }) =>
+      archiveIssue(vars.issueKey, {
+        expectedVersion: vars.version,
+      }),
     onSuccess: async (archived) => {
       setConfirmingArchive(false)
       setBannerAlert({ kind: 'info', message: 'Issue arşivlendi.' })
@@ -272,11 +271,10 @@ export function IssueWorkspacePage(): ReactElement {
         }),
       ])
     },
-    onError: async (error: unknown) => {
-      const scope = mutationScopeRef.current
-      if (scope !== null && error instanceof ApiError) {
+    onError: async (error: unknown, vars) => {
+      if (error instanceof ApiError) {
         if (error.code === 'VERSION_CONFLICT') {
-          await refetchIssueCaches(scope.issueKey)
+          await refetchIssueCaches(vars.issueKey)
           setBannerAlert({
             kind: 'error',
             message: ERROR_MESSAGES.VERSION_CONFLICT,
@@ -284,17 +282,19 @@ export function IssueWorkspacePage(): ReactElement {
           return
         }
         if (error.code === 'ISSUE_ARCHIVED') {
-          await refetchIssueCaches(scope.issueKey)
+          await refetchIssueCaches(vars.issueKey)
           setConfirmingArchive(false)
           setBannerAlert({
             kind: 'info',
             message: ERROR_MESSAGES.ISSUE_ARCHIVED,
           })
+          setFocusIntent('list-heading')
           return
         }
       }
       setConfirmingArchive(false)
       setBannerAlert({ kind: 'error', message: safeErrorMessage(error) })
+      setFocusIntent('archive')
     },
   })
 
@@ -354,6 +354,7 @@ export function IssueWorkspacePage(): ReactElement {
   const openEdit = (): void => {
     setFormError(null)
     setBannerAlert(null)
+    setConfirmingArchive(false)
     setActiveForm('edit')
   }
 
@@ -391,38 +392,40 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleUpdateSubmit = (values: IssueFormValues): void => {
-    if (updateMutation.isPending) {
+    if (updateMutation.isPending || archiveMutation.isPending) {
       return
     }
     const current = issueQuery.data
     if (current === undefined) {
       return
     }
-    mutationScopeRef.current = {
+    updateMutation.mutate({
+      values,
       issueKey: current.issueKey,
       version: current.version,
-    }
-    updateMutation.mutate(values)
+    })
   }
 
   const handleArchive = (): void => {
+    if (updateMutation.isPending) {
+      return
+    }
     setConfirmingArchive(true)
     setFocusIntent('archive-cancel')
   }
 
   const handleArchiveConfirm = (): void => {
-    if (archiveMutation.isPending) {
+    if (archiveMutation.isPending || updateMutation.isPending) {
       return
     }
     const current = issueQuery.data
     if (current === undefined) {
       return
     }
-    mutationScopeRef.current = {
+    archiveMutation.mutate({
       issueKey: current.issueKey,
       version: current.version,
-    }
-    archiveMutation.mutate()
+    })
   }
 
   const handleCancelArchive = (): void => {
@@ -602,6 +605,7 @@ export function IssueWorkspacePage(): ReactElement {
               activityLoading={activityQuery.isLoading}
               activityError={activityQuery.isError}
               statusLabel={statusLabel}
+              statusCodes={statusCodes}
               assigneeLabel={assigneeLabel}
               canMutate={canMutate}
               editing={activeForm === 'edit'}
