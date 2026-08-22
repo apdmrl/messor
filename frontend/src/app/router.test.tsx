@@ -8,7 +8,7 @@ import { SessionContext } from './session'
 import type { SessionContextValue } from './session'
 import { MyWorkPlaceholder } from '../features/my-work/MyWorkPlaceholder'
 import type { ProjectDetail, ProjectMember } from '../features/projects/types'
-import type { IssuePage } from '../features/issues/types'
+import type { Issue, IssuePage } from '../features/issues/types'
 
 const projectDetail: ProjectDetail = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -60,11 +60,13 @@ import {
   getProject,
   listProjectMembers,
 } from '../features/projects/projectsApi'
-import { listIssues } from '../features/issues/issuesApi'
+import { getIssue, listIssueActivity, listIssues } from '../features/issues/issuesApi'
 
 const getProjectMock = getProject as Mock
 const listProjectMembersMock = listProjectMembers as Mock
 const listIssuesMock = listIssues as Mock
+const getIssueMock = getIssue as Mock
+const listIssueActivityMock = listIssueActivity as Mock
 
 const authenticatedSession: SessionContextValue = {
   session: {
@@ -94,11 +96,18 @@ const anonymousSession: SessionContextValue = {
 }
 
 function renderRouter(session: SessionContextValue): void {
+  renderRouterAt(session, ['/projects/MES/board'])
+}
+
+function renderRouterAt(
+  session: SessionContextValue,
+  initialEntries: string[],
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const memoryRouter = createMemoryRouter(routes, {
-    initialEntries: ['/projects/MES/board'],
+    initialEntries,
   })
   render(
     <QueryClientProvider client={queryClient}>
@@ -114,6 +123,8 @@ describe('router', () => {
     getProjectMock.mockReset()
     listProjectMembersMock.mockReset()
     listIssuesMock.mockReset()
+    getIssueMock.mockReset()
+    listIssueActivityMock.mockReset()
   })
 
   it('routes /projects/:projectKey/board to the issue workspace for an authenticated user', async () => {
@@ -127,6 +138,43 @@ describe('router', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('MES')).toBeInTheDocument()
     expect(screen.getByText('İssue’lar')).toBeInTheDocument()
+  })
+
+  it('renders the issue drawer for a direct /projects/:projectKey/issues/:issueKey load', async () => {
+    const issue: Issue = {
+      id: 'i-1',
+      issueKey: 'MES-1',
+      projectKey: 'MES',
+      number: 1,
+      type: 'TASK',
+      title: 'First task',
+      description: 'A description',
+      statusCode: 'TO_DO',
+      reporterId: '11111111-1111-1111-1111-111111111111',
+      assigneeId: null,
+      rank: 0,
+      archived: false,
+      version: 0,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    }
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    getIssueMock.mockResolvedValue(issue)
+    listIssueActivityMock.mockResolvedValue([])
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues/MES-1'])
+
+    expect(
+      await screen.findByRole('dialog', { name: 'MES-1' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'MES-1', level: 2 }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('tab', { name: 'Aktivite' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Yorumlar' })).toBeInTheDocument()
   })
 
   it('redirects an anonymous user away from the protected board route to login', async () => {

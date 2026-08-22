@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ApiError } from '../../app/apiClient'
+import { SessionContext } from '../../app/session'
 import { IssueWorkspacePage } from './IssueWorkspacePage'
 import type { ProjectDetail, ProjectMember } from '../projects/types'
 import type { Issue, IssueActivity, IssuePage } from './types'
@@ -161,18 +162,39 @@ function renderWorkspace(): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  const sessionValue = {
+    session: {
+      status: 'authenticated' as const,
+      user: {
+        id: adminMember.userId,
+        email: 'admin@demo.messor.app',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        role: 'ORG_ADMIN' as const,
+      },
+    },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects/MES/board']}>
-        <Routes>
-          <Route
-            path="/projects/:projectKey/board"
-            element={
-              <IssueWorkspacePage />
-            }
-          />
-        </Routes>
-      </MemoryRouter>
+      <SessionContext.Provider value={sessionValue}>
+        <MemoryRouter initialEntries={['/projects/MES/board']}>
+          <Routes>
+            <Route
+              path="/projects/:projectKey/board"
+              element={<IssueWorkspacePage />}
+            />
+            <Route
+              path="/projects/:projectKey/issues/:issueKey"
+              element={<IssueWorkspacePage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>
     </QueryClientProvider>,
   )
   return queryClient
@@ -319,7 +341,7 @@ describe('IssueWorkspacePage', () => {
       await selectIssue('MES-1')
 
       expect(
-        await screen.findByRole('heading', { name: 'MES-1', level: 3 }),
+        await screen.findByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
       expect(screen.getAllByText('First task').length).toBeGreaterThan(0)
       expect(screen.getByText('A description')).toBeInTheDocument()
@@ -391,7 +413,7 @@ describe('IssueWorkspacePage', () => {
 
       await selectIssue('MES-1')
       expect(
-        await screen.findByRole('heading', { name: 'MES-1', level: 3 }),
+        await screen.findByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
       expect(
         screen.queryByRole('button', { name: 'Düzenle' }),
@@ -759,7 +781,7 @@ describe('IssueWorkspacePage', () => {
       // selection closes after archive
       await waitFor(() => {
         expect(
-          screen.queryByRole('heading', { name: 'MES-1', level: 3 }),
+          screen.queryByRole('heading', { name: 'MES-1', level: 2 }),
         ).not.toBeInTheDocument()
       })
       expect(screen.getByText('Issue arşivlendi.')).toBeInTheDocument()
@@ -1329,7 +1351,7 @@ describe('IssueWorkspacePage', () => {
       })
     })
 
-    it('returns focus to the edit trigger after Escape from the edit form', async () => {
+    it('closes the drawer on Escape from the edit form', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue(members)
       listIssuesMock.mockResolvedValue(pageWithIssues)
@@ -1343,7 +1365,7 @@ describe('IssueWorkspacePage', () => {
       await user.keyboard('{Escape}')
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       })
     })
 
@@ -1454,7 +1476,7 @@ describe('IssueWorkspacePage', () => {
       expect(secondButton).toHaveAttribute('aria-disabled', 'true')
       await user.click(secondButton)
       expect(
-        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+        screen.getByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
 
       resolveUpdate({ ...issue1, title: 'Renamed', version: 1 })
@@ -1462,7 +1484,7 @@ describe('IssueWorkspacePage', () => {
         expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
       })
       expect(
-        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+        screen.getByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
       expect(
         screen.queryByRole('heading', { name: 'MES-2', level: 3 }),
@@ -1495,13 +1517,13 @@ describe('IssueWorkspacePage', () => {
       expect(secondButton).toBeDisabled()
       await user.click(secondButton)
       expect(
-        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+        screen.getByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
 
       resolveArchive({ ...issue1, archived: true, version: 1 })
       await waitFor(() => {
         expect(
-          screen.queryByRole('heading', { name: 'MES-1', level: 3 }),
+          screen.queryByRole('heading', { name: 'MES-1', level: 2 }),
         ).not.toBeInTheDocument()
       })
     })
@@ -2636,7 +2658,7 @@ describe('IssueWorkspacePage', () => {
 
       await screen.findByText('First task')
       await user.click(screen.getByRole('button', { name: /^MES-1,/ }))
-      await screen.findByRole('heading', { name: 'MES-1', level: 3 })
+      await screen.findByRole('heading', { name: 'MES-1', level: 2 })
 
       const menuUser = await openMoveMenu('MES-1')
       await menuUser.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
@@ -2645,7 +2667,7 @@ describe('IssueWorkspacePage', () => {
         expect(screen.getByText('MES-1 taşındı.')).toBeInTheDocument()
       })
       expect(
-        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+        screen.getByRole('heading', { name: 'MES-1', level: 2 }),
       ).toBeInTheDocument()
       expect(
         screen.queryByRole('heading', { name: 'MES-2', level: 3 }),

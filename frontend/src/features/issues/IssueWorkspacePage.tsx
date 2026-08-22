@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../app/apiClient'
+import { useSession } from '../../app/session'
 import { getProject, listProjectMembers } from '../projects/projectsApi'
 import type { ProjectMember } from '../projects/types'
 import {
@@ -15,7 +16,7 @@ import {
   updateIssue,
 } from './issuesApi'
 import { applyOptimisticMove, computeMove } from './boardOrder'
-import { IssueDetailsPanel } from './IssueDetailsPanel'
+import { IssueDrawer } from './IssueDrawer'
 import { IssueForm } from './IssueForm'
 import type { IssueFormValues } from './IssueForm'
 import { ProjectBoard } from './ProjectBoard'
@@ -65,11 +66,19 @@ function memberName(member: ProjectMember): string {
 }
 
 export function IssueWorkspacePage(): ReactElement {
-  const { projectKey } = useParams<{ projectKey: string }>()
+  const { projectKey, issueKey } = useParams<{
+    projectKey: string
+    issueKey?: string
+  }>()
   const key = projectKey ?? ''
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { session } = useSession()
 
-  const [selectedIssueKey, setSelectedIssueKey] = useState<string | null>(null)
+  // The issueKey route parameter is the authoritative selected issue. There is
+  // no competing local selection state.
+  const routeIssueKey = issueKey ?? null
+
   const [activeForm, setActiveForm] = useState<'create' | 'edit' | null>(null)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -81,6 +90,33 @@ export function IssueWorkspacePage(): ReactElement {
     'edit' | 'archive' | 'archive-cancel' | 'list-heading' | null
   >(null)
   const [focusIssueKey, setFocusIssueKey] = useState<string | null>(null)
+  const [commentsBusy, setCommentsBusy] = useState(false)
+
+  // True when the drawer was opened by navigating from within the app (a board
+  // card click), as opposed to a direct URL load.
+  const openedFromBoardRef = useRef(false)
+  const focusReturnIssueKeyRef = useRef<string | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  const currentUserId =
+    session.status === 'authenticated' ? session.user.id : null
+
+  const handleDrawerClose = useCallback((): void => {
+    if (openedFromBoardRef.current) {
+      const returnKey = focusReturnIssueKeyRef.current
+      openedFromBoardRef.current = false
+      focusReturnIssueKeyRef.current = null
+      if (returnKey !== null) {
+        setFocusIssueKey(returnKey)
+      }
+      navigate(-1)
+    } else {
+      openedFromBoardRef.current = false
+      focusReturnIssueKeyRef.current = null
+      setFocusIntent('list-heading')
+      navigate(`/projects/${key}/board`, { replace: true })
+    }
+  }, [key, navigate])
 
   /**
    * Synchronous ownership lock for every issue mutation. Updated immediately at
@@ -151,15 +187,15 @@ export function IssueWorkspacePage(): ReactElement {
   })
 
   const issueQuery = useQuery({
-    queryKey: ['issue', selectedIssueKey ?? ''],
-    queryFn: () => getIssue(selectedIssueKey as string),
-    enabled: selectedIssueKey !== null,
+    queryKey: ['issue', routeIssueKey ?? ''],
+    queryFn: () => getIssue(routeIssueKey as string),
+    enabled: routeIssueKey !== null,
   })
 
   const activityQuery = useQuery({
-    queryKey: ['issue', selectedIssueKey ?? '', 'activity'],
-    queryFn: () => listIssueActivity(selectedIssueKey as string),
-    enabled: selectedIssueKey !== null,
+    queryKey: ['issue', routeIssueKey ?? '', 'activity'],
+    queryFn: () => listIssueActivity(routeIssueKey as string),
+    enabled: routeIssueKey !== null,
   })
 
   const canMutate =
@@ -236,8 +272,9 @@ export function IssueWorkspacePage(): ReactElement {
         queryKey: ['issues', key, ISSUE_LIST_FILTERS],
         exact: true,
       })
-      setSelectedIssueKey(issue.issueKey)
-      createButtonRef.current?.focus()
+      openedFromBoardRef.current = true
+      focusReturnIssueKeyRef.current = issue.issueKey
+      navigate(`/projects/${key}/issues/${encodeURIComponent(issue.issueKey)}`)
     },
     onError: (error: unknown) => {
       setFormError(safeErrorMessage(error))
@@ -310,9 +347,10 @@ export function IssueWorkspacePage(): ReactElement {
     onSuccess: async (archived) => {
       setConfirmingArchive(false)
       setBannerAlert({ kind: 'info', message: 'Issue arşivlendi.' })
-      if (selectedIssueKey === archived.issueKey) {
-        setSelectedIssueKey(null)
-        setFocusIntent('list-heading')
+      if (routeIssueKey === archived.issueKey) {
+        openedFromBoardRef.current = false
+        focusReturnIssueKeyRef.current = null
+        navigate(`/projects/${key}/board`, { replace: true })
       }
       await Promise.all([
         queryClient.invalidateQueries({
@@ -427,7 +465,7 @@ export function IssueWorkspacePage(): ReactElement {
           ),
         })
       }
-      if (selectedIssueKey === moved.issueKey) {
+      if (routeIssueKey === moved.issueKey) {
         queryClient.setQueryData(['issue', moved.issueKey], moved)
       }
       setFocusIssueKey(moved.issueKey)
@@ -562,12 +600,14 @@ export function IssueWorkspacePage(): ReactElement {
     if (anyMutationPending || mutationLocked()) {
       return
     }
-    setSelectedIssueKey(issueKey)
     setConfirmingArchive(false)
     if (activeForm === 'edit') {
       setActiveForm(null)
       setFormError(null)
     }
+    openedFromBoardRef.current = true
+    focusReturnIssueKeyRef.current = issueKey
+    navigate(`/projects/${key}/issues/${encodeURIComponent(issueKey)}`)
   }
 
   const handleCreateSubmit = (values: IssueFormValues): void => {
@@ -678,196 +718,265 @@ export function IssueWorkspacePage(): ReactElement {
   const selectedIssue = issueQuery.data
   const activity: IssueActivity[] | undefined = activityQuery.data
 
+  const drawerIssue =
+    routeIssueKey !== null &&
+    selectedIssue !== undefined &&
+    selectedIssue.projectKey === key
+      ? selectedIssue
+      : null
+  const drawerOpen = drawerIssue !== null
+
   return (
     <div className="issue-workspace">
-      <nav className="issue-workspace__nav" aria-label="Proje gezinme">
-        <Link className="issue-workspace__back" to={`/projects/${key}/settings`}>
-          Proje ayarları
-        </Link>
-        <Link className="issue-workspace__back" to="/projects">
-          Projelere dön
-        </Link>
-      </nav>
+      <div
+        className="issue-workspace__content"
+        inert={drawerOpen ? true : undefined}
+      >
+        <nav className="issue-workspace__nav" aria-label="Proje gezinme">
+          <Link className="issue-workspace__back" to={`/projects/${key}/settings`}>
+            Proje ayarları
+          </Link>
+          <Link className="issue-workspace__back" to="/projects">
+            Projelere dön
+          </Link>
+        </nav>
 
-      <header className="issue-workspace__header">
-        <div className="issue-workspace__heading-block">
-          {projectQuery.isError ? (
-            <h2 className="issue-workspace__heading">Proje yüklenemedi</h2>
-          ) : (
-            <h2 className="issue-workspace__heading">
-              {projectQuery.data?.name ?? 'İssue yönetimi'}
-            </h2>
+        <header className="issue-workspace__header">
+          <div className="issue-workspace__heading-block">
+            {projectQuery.isError ? (
+              <h2 className="issue-workspace__heading">Proje yüklenemedi</h2>
+            ) : (
+              <h2 className="issue-workspace__heading">
+                {projectQuery.data?.name ?? 'İssue yönetimi'}
+              </h2>
+            )}
+            <p className="issue-workspace__key">{key}</p>
+          </div>
+          {canMutate && (
+            <button
+              type="button"
+              ref={createButtonRef}
+              className="issue-workspace__create"
+              onClick={openCreate}
+              disabled={anyMutationPending}
+              aria-disabled={anyMutationPending}
+            >
+              Yeni issue
+            </button>
           )}
-          <p className="issue-workspace__key">{key}</p>
-        </div>
-        {canMutate && (
-          <button
-            type="button"
-            ref={createButtonRef}
-            className="issue-workspace__create"
-            onClick={openCreate}
-            disabled={anyMutationPending}
-            aria-disabled={anyMutationPending}
+        </header>
+
+        {bannerAlert !== null && (
+          <p
+            className="issue-workspace__banner"
+            role={bannerAlert.kind === 'error' ? 'alert' : 'status'}
           >
-            Yeni issue
-          </button>
+            {bannerAlert.message}
+          </p>
         )}
-      </header>
 
-      {bannerAlert !== null && (
-        <p
-          className="issue-workspace__banner"
-          role={bannerAlert.kind === 'error' ? 'alert' : 'status'}
-        >
-          {bannerAlert.message}
-        </p>
-      )}
+        {projectQuery.isLoading && (
+          <p className="issue-workspace__status" role="status">
+            Proje yükleniyor…
+          </p>
+        )}
+        {projectQuery.isError && (
+          <p className="issue-workspace__error" role="alert">
+            {PROJECT_ERROR_FALLBACK}
+          </p>
+        )}
+        {membersQuery.isLoading && (
+          <p className="issue-workspace__status" role="status">
+            Üyeler yükleniyor…
+          </p>
+        )}
+        {membersQuery.isError && (
+          <p className="issue-workspace__error" role="alert">
+            {MEMBERS_ERROR_FALLBACK}
+          </p>
+        )}
 
-      {projectQuery.isLoading && (
-        <p className="issue-workspace__status" role="status">
-          Proje yükleniyor…
-        </p>
-      )}
-      {projectQuery.isError && (
-        <p className="issue-workspace__error" role="alert">
-          {PROJECT_ERROR_FALLBACK}
-        </p>
-      )}
-      {membersQuery.isLoading && (
-        <p className="issue-workspace__status" role="status">
-          Üyeler yükleniyor…
-        </p>
-      )}
-      {membersQuery.isError && (
-        <p className="issue-workspace__error" role="alert">
-          {MEMBERS_ERROR_FALLBACK}
-        </p>
-      )}
-
-      {activeForm === 'create' && canMutate && (
-        <IssueForm
-          key="create"
-          mode="create"
-          initialType="TASK"
-          initialTitle=""
-          initialDescription=""
-          initialAssigneeId={null}
-          members={membersQuery.data ?? []}
-          pending={createMutation.isPending}
-          error={formError}
-          submitLabel="Oluştur"
-          pendingLabel="Oluşturuluyor…"
-          onSubmit={handleCreateSubmit}
-          onCancel={closeCreate}
-          firstFieldRef={firstFieldRef}
-        />
-      )}
-
-      {activeForm === 'edit' &&
-        canMutate &&
-        selectedIssue !== undefined && (
+        {activeForm === 'create' && canMutate && (
           <IssueForm
-            key={`edit-${selectedIssue.issueKey}`}
-            mode="edit"
-            initialType={selectedIssue.type}
-            initialTitle={selectedIssue.title}
-            initialDescription={selectedIssue.description ?? ''}
-            initialAssigneeId={selectedIssue.assigneeId}
+            key="create"
+            mode="create"
+            initialType="TASK"
+            initialTitle=""
+            initialDescription=""
+            initialAssigneeId={null}
             members={membersQuery.data ?? []}
-            pending={updateMutation.isPending}
+            pending={createMutation.isPending}
             error={formError}
-            submitLabel="Güncelle"
-            pendingLabel="Güncelleniyor…"
-            onSubmit={handleUpdateSubmit}
-            onCancel={closeEdit}
+            submitLabel="Oluştur"
+            pendingLabel="Oluşturuluyor…"
+            onSubmit={handleCreateSubmit}
+            onCancel={closeCreate}
             firstFieldRef={firstFieldRef}
           />
         )}
 
-      <section
-        className="issue-workspace__body"
-        aria-labelledby="issue-list-heading"
-      >
-        <h3
-          id="issue-list-heading"
-          className="issue-workspace__list-heading"
-          tabIndex={-1}
-          ref={listHeadingRef}
+        <section
+          className="issue-workspace__body"
+          aria-labelledby="issue-list-heading"
         >
-          İssue’lar
-        </h3>
+          <h3
+            id="issue-list-heading"
+            className="issue-workspace__list-heading"
+            tabIndex={-1}
+            ref={listHeadingRef}
+          >
+            İssue’lar
+          </h3>
 
-        {issuesQuery.isLoading && (
-          <p className="issue-workspace__status" role="status">
-            İssue’lar yükleniyor…
-          </p>
-        )}
+          {issuesQuery.isLoading && (
+            <p className="issue-workspace__status" role="status">
+              İssue’lar yükleniyor…
+            </p>
+          )}
 
-        {issuesQuery.isError && (
-          <p className="issue-workspace__error" role="alert">
-            {LIST_ERROR_FALLBACK}
-          </p>
-        )}
+          {issuesQuery.isError && (
+            <p className="issue-workspace__error" role="alert">
+              {LIST_ERROR_FALLBACK}
+            </p>
+          )}
 
-        {issuesQuery.isSuccess && issuesQuery.data.items.length === 0 && (
-          <p className="issue-workspace__empty">Henüz issue yok.</p>
-        )}
+          {issuesQuery.isSuccess && issuesQuery.data.items.length === 0 && (
+            <p className="issue-workspace__empty">Henüz issue yok.</p>
+          )}
 
-        {issuesQuery.isSuccess && issuesQuery.data.items.length > 0 && (
-          <ProjectBoard
-            workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
-            issues={issuesQuery.data.items}
-            selectedIssueKey={selectedIssueKey}
-            canMove={canMutate}
-            moveDisabled={anyMutationPending}
-            selectionDisabled={anyMutationPending}
-            onSelect={handleSelect}
-            onMove={handleMove}
-            statusLabel={statusLabel}
-            assigneeLabel={assigneeLabel}
-          />
-        )}
-
-        {selectedIssueKey !== null && issueQuery.isLoading && (
-          <p className="issue-workspace__status" role="status">
-            Issue yükleniyor…
-          </p>
-        )}
-
-        {selectedIssueKey !== null && issueQuery.isError && (
-          <p className="issue-workspace__error" role="alert">
-            {DETAIL_ERROR_FALLBACK}
-          </p>
-        )}
-
-        {selectedIssueKey !== null &&
-          !issueQuery.isLoading &&
-          !issueQuery.isError &&
-          selectedIssue !== undefined && (
-            <IssueDetailsPanel
-              issue={selectedIssue}
-              activity={activity}
-              activityLoading={activityQuery.isLoading}
-              activityError={activityQuery.isError}
+          {issuesQuery.isSuccess && issuesQuery.data.items.length > 0 && (
+            <ProjectBoard
+              workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
+              issues={issuesQuery.data.items}
+              selectedIssueKey={routeIssueKey}
+              canMove={canMutate}
+              moveDisabled={anyMutationPending}
+              selectionDisabled={anyMutationPending}
+              onSelect={handleSelect}
+              onMove={handleMove}
               statusLabel={statusLabel}
-              statusCodes={statusCodes}
               assigneeLabel={assigneeLabel}
-              canMutate={canMutate}
-              editing={activeForm === 'edit'}
-              confirmingArchive={confirmingArchive}
-              archivePending={archiveMutation.isPending}
-              actionsDisabled={anyMutationPending}
-              onEdit={openEdit}
-              onArchive={handleArchive}
-              onConfirmArchive={handleArchiveConfirm}
-              onCancelArchive={handleCancelArchive}
-              editButtonRef={editButtonRef}
-              archiveTriggerRef={archiveTriggerRef}
-              archiveConfirmRef={archiveConfirmRef}
-              archiveCancelRef={archiveCancelRef}
             />
           )}
-      </section>
+
+          {routeIssueKey !== null && issueQuery.isLoading && (
+            <p className="issue-workspace__status" role="status">
+              Issue yükleniyor…
+            </p>
+          )}
+
+          {routeIssueKey !== null && issueQuery.isError && (
+            <p className="issue-workspace__error" role="alert">
+              {DETAIL_ERROR_FALLBACK}
+            </p>
+          )}
+
+          {routeIssueKey !== null &&
+            selectedIssue !== undefined &&
+            selectedIssue.projectKey !== key && (
+              <p className="issue-workspace__error" role="alert">
+                Bu issue bu projede bulunamadı.
+              </p>
+            )}
+        </section>
+      </div>
+
+      {drawerIssue !== null && (
+        <IssueDrawer
+          issue={drawerIssue}
+          currentUserId={currentUserId}
+          currentUserRole={projectQuery.data?.currentUserRole ?? 'VIEWER'}
+          members={membersQuery.data ?? []}
+          activity={activity}
+          activityLoading={activityQuery.isLoading}
+          activityError={activityQuery.isError}
+          statusLabel={statusLabel}
+          statusCodes={statusCodes}
+          assigneeLabel={assigneeLabel}
+          escapeBlocked={commentsBusy || confirmingArchive}
+          onBusyChange={setCommentsBusy}
+          onClose={handleDrawerClose}
+          closeButtonRef={closeButtonRef}
+        >
+          {canMutate && !drawerIssue.archived && (
+            <div className="issue-drawer-actions">
+              {!confirmingArchive && activeForm !== 'edit' && (
+                <>
+                  <button
+                    type="button"
+                    ref={editButtonRef}
+                    className="issue-drawer-actions__btn"
+                    onClick={openEdit}
+                    disabled={anyMutationPending}
+                    aria-disabled={anyMutationPending}
+                  >
+                    Düzenle
+                  </button>
+                  <button
+                    type="button"
+                    ref={archiveTriggerRef}
+                    className="issue-drawer-actions__btn issue-drawer-actions__btn--danger"
+                    onClick={handleArchive}
+                    disabled={anyMutationPending}
+                    aria-disabled={anyMutationPending}
+                  >
+                    Arşivle
+                  </button>
+                </>
+              )}
+              {confirmingArchive && (
+                <span className="issue-drawer-actions__confirm">
+                  <span className="issue-drawer-actions__confirm-text">
+                    Bu issue arşivlensin mi?
+                  </span>
+                  <button
+                    type="button"
+                    ref={archiveConfirmRef}
+                    className="issue-drawer-actions__btn issue-drawer-actions__btn--danger"
+                    onClick={handleArchiveConfirm}
+                    disabled={archiveMutation.isPending || anyMutationPending}
+                    aria-disabled={
+                      archiveMutation.isPending || anyMutationPending
+                    }
+                  >
+                    Arşivlemeyi onayla
+                  </button>
+                  <button
+                    type="button"
+                    ref={archiveCancelRef}
+                    className="issue-drawer-actions__btn"
+                    onClick={handleCancelArchive}
+                    disabled={archiveMutation.isPending || anyMutationPending}
+                    aria-disabled={
+                      archiveMutation.isPending || anyMutationPending
+                    }
+                  >
+                    Vazgeç
+                  </button>
+                </span>
+              )}
+            </div>
+          )}
+          {activeForm === 'edit' && canMutate && (
+            <IssueForm
+              key={`edit-${drawerIssue.issueKey}`}
+              mode="edit"
+              initialType={drawerIssue.type}
+              initialTitle={drawerIssue.title}
+              initialDescription={drawerIssue.description ?? ''}
+              initialAssigneeId={drawerIssue.assigneeId}
+              members={membersQuery.data ?? []}
+              pending={updateMutation.isPending}
+              error={formError}
+              submitLabel="Güncelle"
+              pendingLabel="Güncelleniyor…"
+              onSubmit={handleUpdateSubmit}
+              onCancel={closeEdit}
+              firstFieldRef={firstFieldRef}
+            />
+          )}
+        </IssueDrawer>
+      )}
     </div>
   )
 }

@@ -75,6 +75,10 @@ export const routes: RouteObject[] = [
         element: <IssueWorkspacePage />,
       },
       {
+        path: '/projects/:projectKey/issues/:issueKey',
+        element: <IssueWorkspacePage />,
+      },
+      {
         path: '/projects/:projectKey/settings',
         element: <ProjectSettingsPage />,
       },
