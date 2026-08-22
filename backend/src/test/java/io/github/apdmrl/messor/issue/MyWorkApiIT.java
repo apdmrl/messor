@@ -380,6 +380,59 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 	// ------------------------------------------------------------------
 
 	@Test
+	void crossProjectSameNumberAndSamePrimarySortIsDeterministicAcrossPages()
+			throws Exception {
+		LoginSession admin = login("mywork-global-admin@example.com", UserRole.ORG_ADMIN);
+		String keyA = createProject(admin, "WORKG1", "Global A");
+		String keyB = createProject(admin, "WORKG2", "Global B");
+
+		LoginSession member = login("mywork-global-member@example.com", UserRole.USER);
+		addMember(keyA, member.userId(), "MEMBER");
+		addMember(keyB, member.userId(), "MEMBER");
+
+		// Three issues with the SAME number (1) and SAME primary sort value
+		// (title) across two projects: issue number is not globally unique, so
+		// only the final id ASC tie-breaker can keep pagination stable.
+		createIssue(admin, keyA, "TASK", "Same title", null, member.userId());
+		createIssue(admin, keyB, "TASK", "Same title", null, member.userId());
+		createIssue(admin, keyA, "TASK", "Same title", null, member.userId());
+
+		List<String> walk = new ArrayList<>();
+		for (int page = 0; page < 3; page++) {
+			MvcResult result = mockMvc.perform(get("/api/my-work")
+					.param("sort", "title,asc").param("page", String.valueOf(page))
+					.param("size", "1")
+					.cookie(member.session()))
+					.andExpect(status().isOk())
+					.andReturn();
+			JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+			for (JsonNode item : body.get("items")) {
+				walk.add(item.get("issueKey").asText());
+			}
+		}
+		// size=1 over 3 issues -> 3 pages -> exactly 3 unique issue keys, none
+		// duplicated and none missing.
+		assertThat(walk).hasSize(3);
+		assertThat(walk).doesNotHaveDuplicates();
+
+		// A second identical walk must reproduce the exact same order.
+		List<String> walkAgain = new ArrayList<>();
+		for (int page = 0; page < 3; page++) {
+			MvcResult result = mockMvc.perform(get("/api/my-work")
+					.param("sort", "title,asc").param("page", String.valueOf(page))
+					.param("size", "1")
+					.cookie(member.session()))
+					.andExpect(status().isOk())
+					.andReturn();
+			JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
+			for (JsonNode item : body.get("items")) {
+				walkAgain.add(item.get("issueKey").asText());
+			}
+		}
+		assertThat(walkAgain).isEqualTo(walk);
+	}
+
+	@Test
 	void paginationIsBoundedAndDeterministic() throws Exception {
 		LoginSession admin = login("mywork-paging-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "WORKE1", "Paging project");
@@ -543,6 +596,16 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
 		assertNoInternalDetail(assigneeId);
+
+		// The generic assignee alias is also rejected.
+		MvcResult assignee = mockMvc.perform(get("/api/my-work")
+				.param("assignee", victim.userId().toString())
+				.cookie(me.session()))
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andReturn();
+		assertNoInternalDetail(assignee);
 
 		// The victim's issues are never returned even in a non-rejected request.
 		MvcResult normal = mockMvc.perform(get("/api/my-work").cookie(me.session()))

@@ -65,9 +65,12 @@ public class MyWorkService {
 				: Sort.Direction.ASC;
 		Sort sort = Sort.by(primary, field);
 		if (!"number".equals(field)) {
+			// Deterministic secondary within a project.
 			sort = sort.and(Sort.by(Sort.Direction.ASC, "number"));
 		}
-		return sort;
+		// Final globally-unique tie-breaker: issue number is not unique across
+		// projects, so id ASC guarantees stable, complete pagination.
+		return sort.and(Sort.by(Sort.Direction.ASC, "id"));
 	}
 
 }

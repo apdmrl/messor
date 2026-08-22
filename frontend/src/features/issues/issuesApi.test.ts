@@ -6,7 +6,16 @@ const ISSUES_URL = '/api/issues'
 const CSRF_URL = '/api/auth/csrf'
 const CSRF_HEADER = 'X-Custom-Csrf-Header'
 
-const filters = { page: 0, size: 100, sort: 'number,asc' }
+const filters = {
+  project: null,
+  type: 'BUG' as const,
+  status: 'IN_PROGRESS',
+  assignee: 'user-1',
+  archive: 'archived' as const,
+  sort: { field: 'title' as const, direction: 'desc' as const },
+  page: 2,
+  size: 50,
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -80,7 +89,7 @@ describe('issuesApi', () => {
 
     expect(result).toEqual(page)
     expect(fetchSpy).toHaveBeenCalledWith(
-      `${PROJECTS_URL}/MES/issues?page=0&size=100&sort=number%2Casc`,
+      `${PROJECTS_URL}/MES/issues?type=BUG&status=IN_PROGRESS&assignee=user-1&archive=archived&sort=title%2Cdesc&page=2&size=50`,
       expect.objectContaining({ credentials: 'include' }),
     )
   })
@@ -100,7 +109,7 @@ describe('issuesApi', () => {
     await listIssues('M E/S', filters)
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      `${PROJECTS_URL}/M%20E%2FS/issues?page=0&size=100&sort=number%2Casc`,
+      `${PROJECTS_URL}/M%20E%2FS/issues?type=BUG&status=IN_PROGRESS&assignee=user-1&archive=archived&sort=title%2Cdesc&page=2&size=50`,
       expect.anything(),
     )
   })

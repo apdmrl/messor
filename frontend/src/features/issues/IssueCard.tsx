@@ -63,12 +63,17 @@ export function IssueCard({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuToggleRef = useRef<HTMLButtonElement>(null)
   const reducedMotion = usePrefersReducedMotion()
+  // Archived issues are read-only: never draggable and never movable. The
+  // sortable is disabled for them and the drag handle / move menu are hidden.
+  const readOnly = issue.archived
+  const movable = canMove && !readOnly
   // The sortable listeners/attributes live on a dedicated drag handle so dnd-kit
   // never swallows keyboard activation of the descendant select/menu buttons.
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: issue.issueKey,
       data: { type: 'issue', statusCode: issue.statusCode },
+      disabled: readOnly,
     })
 
   const style: CSSProperties = {
@@ -129,7 +134,7 @@ export function IssueCard({
           <span className="kanban-card__assignee">{assigneeLabel(issue.assigneeId)}</span>
         </button>
 
-        {canMove && !moveDisabled && (
+        {movable && !moveDisabled && (
           <button
             type="button"
             className="kanban-card__drag-handle"
@@ -142,7 +147,7 @@ export function IssueCard({
         )}
       </div>
 
-      {canMove && (
+      {movable && (
         <div className="kanban-card__menu">
           <button
             type="button"

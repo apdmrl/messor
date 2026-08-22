@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../app/apiClient'
@@ -17,24 +17,26 @@ import {
 } from './issuesApi'
 import { applyOptimisticMove, computeMove } from './boardOrder'
 import { IssueDrawer } from './IssueDrawer'
+import { IssueFilters } from './IssueFilters'
+import type { StatusOption, MemberOption } from './IssueFilters'
 import { IssueForm } from './IssueForm'
 import type { IssueFormValues } from './IssueForm'
 import { ProjectBoard } from './ProjectBoard'
+import {
+  parseFilters,
+  serializeFilters,
+  PROJECT_FILTER_CONTEXT,
+} from './issueFilters'
+import type { IssueFilterState } from './issueFilters'
 import type {
   IssueActivity,
   Issue,
-  IssueListFilters,
   IssuePage,
   IssueType,
 } from './types'
 import './IssueWorkspacePage.css'
 import './ProjectBoard.css'
-
-const ISSUE_LIST_FILTERS: IssueListFilters = {
-  page: 0,
-  size: 100,
-  sort: 'number,asc',
-}
+import './IssueFilters.css'
 
 const GENERIC_ERROR = 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'
 const LIST_ERROR_FALLBACK = 'İssue’lar yüklenemedi. Lütfen tekrar deneyin.'
@@ -73,12 +75,37 @@ export function IssueWorkspacePage(): ReactElement {
   const key = projectKey ?? ''
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { session } = useSession()
 
   // The issueKey route parameter is the authoritative selected issue. There is
   // no competing local selection state.
   const routeIssueKey = issueKey ?? null
+
+  // URL query parameters are the single source of truth for issue filters.
+  // Because the project comes from the route, the project context never parses
+  // or emits a project parameter. The parsed state is the exact normalized
+  // effective filter set used for the query key.
+  const filters = useMemo(
+    () => parseFilters(searchParams, PROJECT_FILTER_CONTEXT),
+    [searchParams],
+  )
+
+  const updateFilters = useCallback(
+    (patch: Partial<IssueFilterState>): void => {
+      const next = { ...filters, ...patch, page: 0 }
+      setSearchParams(serializeFilters(next, PROJECT_FILTER_CONTEXT))
+    },
+    [filters, setSearchParams],
+  )
+
+  const goToPage = useCallback(
+    (page: number): void => {
+      setSearchParams(serializeFilters({ ...filters, page }, PROJECT_FILTER_CONTEXT))
+    },
+    [filters, setSearchParams],
+  )
 
   const [activeForm, setActiveForm] = useState<'create' | 'edit' | null>(null)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
@@ -188,10 +215,28 @@ export function IssueWorkspacePage(): ReactElement {
   })
 
   const issuesQuery = useQuery({
-    queryKey: ['issues', key, ISSUE_LIST_FILTERS],
-    queryFn: () => listIssues(key, ISSUE_LIST_FILTERS),
+    queryKey: ['issues', key, filters],
+    queryFn: () => listIssues(key, filters),
     enabled: key !== '',
   })
+
+  const memberOptions: MemberOption[] = useMemo(
+    () =>
+      (membersQuery.data ?? []).map((m) => ({
+        id: m.userId,
+        label: memberName(m),
+      })),
+    [membersQuery.data],
+  )
+
+  const statusOptions: StatusOption[] = useMemo(
+    () =>
+      (projectQuery.data?.workflowStatuses ?? []).map((s) => ({
+        code: s.code,
+        displayName: s.displayName,
+      })),
+    [projectQuery.data],
+  )
 
   const issueQuery = useQuery({
     queryKey: ['issue', routeIssueKey ?? ''],
@@ -256,7 +301,7 @@ export function IssueWorkspacePage(): ReactElement {
         type: 'active',
       }),
       queryClient.refetchQueries({
-        queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+        queryKey: ['issues', key, filters],
         exact: true,
         type: 'active',
       }),
@@ -281,7 +326,7 @@ export function IssueWorkspacePage(): ReactElement {
       setBannerAlert(null)
       setActiveForm(null)
       await queryClient.invalidateQueries({
-        queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+        queryKey: ['issues', key, filters],
         exact: true,
       })
       openedFromBoardRef.current = true
@@ -323,7 +368,7 @@ export function IssueWorkspacePage(): ReactElement {
           exact: true,
         }),
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+          queryKey: ['issues', key, filters],
           exact: true,
         }),
       ])
@@ -366,7 +411,7 @@ export function IssueWorkspacePage(): ReactElement {
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+          queryKey: ['issues', key, filters],
           exact: true,
         }),
         queryClient.invalidateQueries({
@@ -431,7 +476,7 @@ export function IssueWorkspacePage(): ReactElement {
       if (activeMutationRef.current !== 'move') {
         throw new Error('blocked')
       }
-      const listKey = ['issues', key, ISSUE_LIST_FILTERS]
+      const listKey = ['issues', key, filters]
       const detailKey = ['issue', vars.issueKey]
       const activityKey = ['issue', vars.issueKey, 'activity']
 
@@ -467,7 +512,7 @@ export function IssueWorkspacePage(): ReactElement {
       // Reconcile the moved issue with the authoritative server response. The
       // pending-move invariant locks selection, so the moved issue is still the
       // selected issue; guard the comparison to be safe against any drift.
-      const listKey = ['issues', key, ISSUE_LIST_FILTERS]
+      const listKey = ['issues', key, filters]
       const list = queryClient.getQueryData<IssuePage>(listKey)
       if (list !== undefined) {
         queryClient.setQueryData(listKey, {
@@ -514,7 +559,7 @@ export function IssueWorkspacePage(): ReactElement {
       releaseMutation('move')
       void Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+          queryKey: ['issues', key, filters],
           exact: true,
         }),
         queryClient.invalidateQueries({
@@ -701,6 +746,11 @@ export function IssueWorkspacePage(): ReactElement {
     if (issues === undefined || statuses.length === 0) {
       return false
     }
+    // Archived issues are read-only and can never be moved.
+    const dragged = issues.find((i) => i.issueKey === issueKey)
+    if (dragged?.archived === true) {
+      return false
+    }
     const result = computeMove({
       workflowStatuses: statuses,
       issues,
@@ -808,6 +858,17 @@ export function IssueWorkspacePage(): ReactElement {
           </p>
         )}
 
+        {!projectQuery.isError && (
+          <IssueFilters
+            filters={filters}
+            projects={[]}
+            statuses={statusOptions}
+            members={memberOptions}
+            showProject={false}
+            onChange={updateFilters}
+          />
+        )}
+
         {activeForm === 'create' && canMutate && (
           <IssueForm
             key="create"
@@ -864,11 +925,38 @@ export function IssueWorkspacePage(): ReactElement {
               canMove={canMutate}
               moveDisabled={anyMutationPending}
               selectionDisabled={anyMutationPending}
+              includeArchived={filters.archive !== 'active'}
               onSelect={handleSelect}
               onMove={handleMove}
               statusLabel={statusLabel}
               assigneeLabel={assigneeLabel}
             />
+          )}
+
+          {issuesQuery.isSuccess && (issuesQuery.data.totalPages ?? 0) > 1 && (
+            <nav className="issue-workspace__pagination" aria-label="Sayfalama">
+              <button
+                type="button"
+                className="issue-workspace__page"
+                onClick={() => goToPage(filters.page - 1)}
+                disabled={filters.page <= 0}
+                aria-disabled={filters.page <= 0}
+              >
+                Önceki
+              </button>
+              <span className="issue-workspace__page-info">
+                Sayfa {filters.page + 1} / {issuesQuery.data.totalPages}
+              </span>
+              <button
+                type="button"
+                className="issue-workspace__page"
+                onClick={() => goToPage(filters.page + 1)}
+                disabled={filters.page >= issuesQuery.data.totalPages - 1}
+                aria-disabled={filters.page >= issuesQuery.data.totalPages - 1}
+              >
+                Sonraki
+              </button>
+            </nav>
           )}
 
           {routeIssueKey !== null && issueQuery.isLoading && (
@@ -992,5 +1080,3 @@ export function IssueWorkspacePage(): ReactElement {
     </div>
   )
 }
-
-export { ISSUE_LIST_FILTERS }

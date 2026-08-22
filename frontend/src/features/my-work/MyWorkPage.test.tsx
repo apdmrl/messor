@@ -257,4 +257,24 @@ describe('MyWorkPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Arşivle|Düzenle|Sil/ })).toBeNull()
   })
+
+  it('does not render an assignee filter selector', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    renderMyWork()
+
+    await screen.findByText('First task')
+    // My Work is principal-scoped: there is no "Atanan" filter control.
+    expect(screen.queryByLabelText('Atanan')).toBeNull()
+    expect(screen.queryByLabelText('Tüm atananlar')).toBeNull()
+  })
+
+  it('never sends an assignee parameter to the My Work API', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    // A hostile/legacy assignee value in the URL must be dropped.
+    renderMyWork('/my-work?assignee=user-9')
+
+    await screen.findByText('First task')
+    const lastCall = listMyWorkMock.mock.calls.at(-1)?.[0] as { assignee: string | null }
+    expect(lastCall.assignee).toBeNull()
+  })
 })

@@ -7,11 +7,23 @@ import type { IssueType } from './types'
  * <p>This is the one parse/normalize/serialize layer. The supported parameters
  * are {@code project}, {@code type}, {@code status}, {@code assignee},
  * {@code archive}, {@code sort}, {@code page} and {@code size}. Every value is
- * validated against a fixed allowlist (mirroring the backend allowlists), and
- * any unknown or hostile value is normalized to a safe default so a raw value is
- * never forwarded to the backend sort/filter API. Defaults are omitted from the
- * serialized URL so the canonical URL stays clean, and the parameter order is
- * deterministic so equal states always produce the same URL.</p>
+ * validated strictly against a fixed allowlist (mirroring the backend
+ * allowlists), and any unknown or hostile value is normalized to a safe default
+ * so a raw value is never forwarded to the backend. Defaults are omitted from
+ * the serialized URL so the canonical URL stays clean, the parameter order is
+ * deterministic, and unsupported/hostile parameters are dropped from the
+ * canonical form.</p>
+ *
+ * <p>The two consuming contexts are separated explicitly so one serializer
+ * never emits a parameter the other context does not support:
+ * <ul>
+ *   <li><b>Project workspace</b> ({@link PROJECT_FILTER_CONTEXT}): assignee is
+ *   supported; {@code project} comes from the route so no project parameter is
+ *   produced; a board-friendly default size of 100.</li>
+ *   <li><b>My Work</b> ({@link MY_WORK_FILTER_CONTEXT}): project is a real
+ *   filter; assignee is NOT supported (My Work is principal-scoped) so any
+ *   {@code assignee} value is dropped on parse and never serialized.</li>
+ * </ul></p>
  */
 export type ArchiveFilter = 'active' | 'archived' | 'all'
 export type SortField = 'createdAt' | 'updatedAt' | 'number' | 'title'
@@ -33,6 +45,17 @@ export interface IssueFilterState {
   size: number
 }
 
+export interface IssueFilterContext {
+  /** When false, {@code assignee} is never parsed nor serialized. */
+  includeAssignee: boolean
+  /** When false, {@code project} is never parsed nor serialized (route-based). */
+  includeProject: boolean
+  /** The size value that is treated as the default and omitted from the URL. */
+  defaultSize: number
+}
+
+const DEFAULT_SIZE = 20
+
 export const DEFAULT_FILTERS: IssueFilterState = {
   project: null,
   type: null,
@@ -41,7 +64,21 @@ export const DEFAULT_FILTERS: IssueFilterState = {
   archive: 'active',
   sort: { field: 'number', direction: 'asc' },
   page: 0,
-  size: 20,
+  size: DEFAULT_SIZE,
+}
+
+/** Project workspace context: assignee supported, project from route, size 100. */
+export const PROJECT_FILTER_CONTEXT: IssueFilterContext = {
+  includeAssignee: true,
+  includeProject: false,
+  defaultSize: 100,
+}
+
+/** My Work context: project a real filter, assignee never supported, size 20. */
+export const MY_WORK_FILTER_CONTEXT: IssueFilterContext = {
+  includeAssignee: false,
+  includeProject: true,
+  defaultSize: DEFAULT_SIZE,
 }
 
 const ARCHIVE_VALUES: ArchiveFilter[] = ['active', 'archived', 'all']
@@ -52,60 +89,102 @@ const MAX_PAGE = 10000
 const MIN_SIZE = 1
 const MAX_SIZE = 100
 
+/** Matches only a full decimal integer (no sign, junk, decimals, whitespace). */
+const INTEGER_RE = /^\d+$/
+
+/**
+ * Returns the single value of a parameter, or {@code null} when it is absent,
+ * empty, or repeated. Repeated singleton parameters collapse to {@code null} so
+ * a canonical default is used rather than silently picking one value.
+ */
+function singleParam(searchParams: URLSearchParams, name: string): string | null {
+  const values = searchParams.getAll(name)
+  if (values.length !== 1) {
+    return null
+  }
+  const value = values[0]
+  return value === '' ? null : value
+}
+
 function normalizeInt(raw: string | null, min: number, max: number, fallback: number): number {
   if (raw === null) {
     return fallback
   }
-  const value = Number.parseInt(raw, 10)
-  if (Number.isNaN(value) || value < min || value > max) {
+  if (!INTEGER_RE.test(raw)) {
+    return fallback
+  }
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
     return fallback
   }
   return value
 }
 
-function normalizeSort(raw: string | null): SortSpec {
+function normalizeSort(raw: string | null, fallback: SortSpec): SortSpec {
   if (raw === null) {
-    return { ...DEFAULT_FILTERS.sort }
+    return fallback
   }
-  const [fieldPart, directionPart] = raw.split(',')
-  const field = SORT_FIELDS.find((f) => f === fieldPart)
-  const direction = SORT_DIRECTIONS.find((d) => d === directionPart)
+  // Exactly two comma-separated segments; anything else (e.g. number,asc,evil)
+  // collapses to the default.
+  const parts = raw.split(',')
+  if (parts.length !== 2) {
+    return fallback
+  }
+  const field = SORT_FIELDS.find((f) => f === parts[0])
+  const direction = SORT_DIRECTIONS.find((d) => d === parts[1])
   if (field === undefined || direction === undefined) {
-    return { ...DEFAULT_FILTERS.sort }
+    return fallback
   }
   return { field, direction }
 }
 
 /**
  * Parse and normalize a {@link URLSearchParams} into an exact, effective filter
- * state. Every unknown or hostile value collapses to a safe default; the
- * returned state is the canonical effective filter set used for the query key.
+ * state. Every unknown, hostile, or (for the given context) unsupported value
+ * collapses to a safe default; the returned state is the canonical effective
+ * filter set used for the query key.
  */
-export function parseFilters(searchParams: URLSearchParams): IssueFilterState {
-  const project = searchParams.get('project')
-  const typeRaw = searchParams.get('type')
+export function parseFilters(
+  searchParams: URLSearchParams,
+  context: IssueFilterContext,
+): IssueFilterState {
+  const defaultSort = { ...DEFAULT_FILTERS.sort }
+  const typeRaw = singleParam(searchParams, 'type')
   const type: IssueType | null = ISSUE_TYPE_VALUES.includes(typeRaw as IssueType)
     ? (typeRaw as IssueType)
     : null
-  const status = searchParams.get('status')
-  const assignee = searchParams.get('assignee')
-  const archiveRaw = searchParams.get('archive')
+  const archiveRaw = singleParam(searchParams, 'archive')
   const archive: ArchiveFilter = ARCHIVE_VALUES.includes(archiveRaw as ArchiveFilter)
     ? (archiveRaw as ArchiveFilter)
     : DEFAULT_FILTERS.archive
-  const sort = normalizeSort(searchParams.get('sort'))
-  const page = normalizeInt(searchParams.get('page'), 0, MAX_PAGE, DEFAULT_FILTERS.page)
-  const size = normalizeInt(searchParams.get('size'), MIN_SIZE, MAX_SIZE, DEFAULT_FILTERS.size)
-  return { project, type, status, assignee, archive, sort, page, size }
+  return {
+    project: context.includeProject ? singleParam(searchParams, 'project') : null,
+    type,
+    status: singleParam(searchParams, 'status'),
+    assignee: context.includeAssignee ? singleParam(searchParams, 'assignee') : null,
+    archive,
+    sort: normalizeSort(singleParam(searchParams, 'sort'), defaultSort),
+    page: normalizeInt(singleParam(searchParams, 'page'), 0, MAX_PAGE, DEFAULT_FILTERS.page),
+    size: normalizeInt(
+      singleParam(searchParams, 'size'),
+      MIN_SIZE,
+      MAX_SIZE,
+      context.defaultSize,
+    ),
+  }
 }
 
 /**
  * Serialize a filter state to a canonical {@link URLSearchParams}: only
- * non-default values are emitted, in a fixed deterministic order.
+ * non-default values are emitted, in a fixed deterministic order, and only for
+ * parameters supported by the given context.
  */
-export function serializeFilters(filters: IssueFilterState): URLSearchParams {
+export function serializeFilters(
+  filters: IssueFilterState,
+  context: IssueFilterContext,
+): URLSearchParams {
   const params = new URLSearchParams()
-  if (filters.project !== null) {
+  if (context.includeProject && filters.project !== null) {
     params.set('project', filters.project)
   }
   if (filters.type !== null) {
@@ -114,7 +193,7 @@ export function serializeFilters(filters: IssueFilterState): URLSearchParams {
   if (filters.status !== null) {
     params.set('status', filters.status)
   }
-  if (filters.assignee !== null) {
+  if (context.includeAssignee && filters.assignee !== null) {
     params.set('assignee', filters.assignee)
   }
   if (filters.archive !== 'active') {
@@ -126,14 +205,17 @@ export function serializeFilters(filters: IssueFilterState): URLSearchParams {
   if (filters.page !== 0) {
     params.set('page', String(filters.page))
   }
-  if (filters.size !== 20) {
+  if (filters.size !== context.defaultSize) {
     params.set('size', String(filters.size))
   }
   return params
 }
 
 /** Canonical query string (including the leading {@code ?} when non-empty). */
-export function canonicalQueryString(filters: IssueFilterState): string {
-  const query = serializeFilters(filters).toString()
+export function canonicalQueryString(
+  filters: IssueFilterState,
+  context: IssueFilterContext,
+): string {
+  const query = serializeFilters(filters, context).toString()
   return query === '' ? '' : `?${query}`
 }

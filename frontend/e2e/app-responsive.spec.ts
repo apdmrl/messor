@@ -290,3 +290,90 @@ test('reduced motion disables transitions and animations', async ({ page }) => {
     expect(duration, 'transition duration must be zero under reduced motion').toBe('0s')
   }
 })
+
+/* ============================================================
+   6. Project workspace: URL filters drive the issue request and
+      archived cards are read-only (no drag handle, no move menu).
+   ============================================================ */
+test('project workspace filters drive the request and archived cards are read-only', async ({
+  page,
+}) => {
+  await mockBackend(page)
+  const requestPromise = page.waitForRequest((req) =>
+    req.url().includes('/api/projects/ALPHA/issues'),
+  )
+  await page.goto('/projects/ALPHA/board?type=BUG&archive=archived')
+  const request = await requestPromise
+  const params = new URL(request.url()).searchParams
+  expect(params.get('type')).toBe('BUG')
+  expect(params.get('archive')).toBe('archived')
+
+  // The archived card (ALPHA-2) renders but exposes no drag or move controls,
+  // while the active cards keep theirs.
+  await expect(page.getByText('My archived task')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'ALPHA-2 sürükle' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'ALPHA-2 için taşıma menüsü' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'ALPHA-1 sürükle' })).toHaveCount(1)
+
+  await expectNoHorizontalOverflow(page)
+})
+
+/* ============================================================
+   7. My Work exposes no assignee filter (principal-scoped).
+   ============================================================ */
+test('My Work has no assignee filter', async ({ page }) => {
+  await mockBackend(page)
+  await page.goto('/my-work')
+
+  await expect(page.getByRole('heading', { name: 'Görevlerim', level: 2 })).toBeVisible()
+  await expect(page.getByLabel('Proje')).toBeVisible()
+  // No "Atanan" filter control on My Work.
+  await expect(page.getByLabel('Atanan')).toHaveCount(0)
+  await expect(page.getByLabel('Tüm atananlar')).toHaveCount(0)
+})
+
+/* ============================================================
+   8. Project workspace pagination walks all issues with no
+      duplicates and no missing rows (stateful backend mock).
+   ============================================================ */
+test('project workspace pagination has no duplicates or missing rows', async ({ page }) => {
+  await mockBackend(page)
+  // Build 5 issues and serve them with size=2 pagination driven by page param.
+  const many = [1, 2, 3, 4, 5].map((n) =>
+    makeIssue(`ALPHA-${n}`, n, `Bulk task ${n}`),
+  )
+  await page.route((url) => url.pathname === '/api/projects/ALPHA/issues', (route) => {
+    const url = new URL(route.request().url())
+    const page = Number(url.searchParams.get('page') ?? '0')
+    const size = Number(url.searchParams.get('size') ?? '100')
+    const items = many.slice(page * size, page * size + size)
+    route.fulfill({
+      status: 200,
+      contentType: JSON_JSON,
+      body: JSON.stringify({
+        items,
+        page,
+        size,
+        totalItems: many.length,
+        totalPages: Math.ceil(many.length / size),
+      }),
+    })
+  })
+  const seen = new Set<string>()
+  // Walk all three size=2 pages directly by URL and assert no duplicates and
+  // no missing rows across the full deterministic pagination.
+  for (let p = 0; p < 3; p += 1) {
+    await page.goto(`/projects/ALPHA/board?size=2&page=${p}`)
+    const firstOnPage = 2 * p + 1
+    await page.getByText(`Bulk task ${firstOnPage}`).waitFor()
+    const keys = await page.locator('.kanban-card__key').allTextContents()
+    for (const key of keys) {
+      seen.add(key)
+    }
+  }
+  expect(seen.size).toBe(5)
+  for (let n = 1; n <= 5; n += 1) {
+    expect(seen.has(`ALPHA-${n}`), `must include ALPHA-${n}`).toBe(true)
+  }
+  await expectNoHorizontalOverflow(page)
+})

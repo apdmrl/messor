@@ -375,21 +375,28 @@ public class IssueService {
 	}
 
 	/**
-		* Returns a page of active (non-archived) issues of the given project,
-		* authorizing {@code READ} against the project before querying. The primary
-		* sort field and direction are validated by the controller allowlist; a
-		* deterministic secondary {@code number ASC} tie-breaker is added whenever
-		* the primary field is not {@code number}. Pagination totals count only
-		* active project issues. This is a read-only query; no issue, activity or
-		* counter is mutated.
+		* Returns a page of the given project's issues matching the optional
+		* type/status/assignee/archive filters, authorizing {@code READ} against the
+		* project before querying. The primary sort field and direction are
+		* validated by the controller allowlist; the final ordering always appends a
+		* globally-unique {@code id ASC} tie-breaker so pagination never duplicates
+		* or drops rows. This is a read-only query; no issue, activity or counter is
+		* mutated.
 		*/
 	@Transactional(readOnly = true)
 	public IssuePageResponse list(String projectKey, MessorUserPrincipal principal, int page,
-			int size, String field, String direction) {
+			int size, String field, String direction, IssueType type, String statusCode,
+			UUID assigneeId, ArchiveFilter archive) {
 		Project project = authorizationService
 				.requireProject(projectKey, principal, ProjectPermission.READ).project();
+		Boolean archived = switch (archive) {
+			case ACTIVE -> Boolean.FALSE;
+			case ARCHIVED -> Boolean.TRUE;
+			case ALL -> null;
+		};
 		Pageable pageable = PageRequest.of(page, size, buildSort(field, direction));
-		Page<Issue> result = issueRepository.findActiveByProject(project.getId(), pageable);
+		Page<Issue> result = issueRepository.findProjectIssues(project.getId(), type,
+				statusCode, assigneeId, archived, pageable);
 		return IssuePageResponse.from(result);
 	}
 
@@ -398,9 +405,11 @@ public class IssueService {
 				: Sort.Direction.ASC;
 		Sort sort = Sort.by(primary, field);
 		if (!"number".equals(field)) {
+			// Deterministic secondary within the project.
 			sort = sort.and(Sort.by(Sort.Direction.ASC, "number"));
 		}
-		return sort;
+		// Final globally-unique tie-breaker so pagination is stable and complete.
+		return sort.and(Sort.by(Sort.Direction.ASC, "id"));
 	}
 
 	private int indexOfIssueByKey(List<Issue> issues, String humanKey) {

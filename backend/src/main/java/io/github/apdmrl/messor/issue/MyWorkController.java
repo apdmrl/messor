@@ -37,7 +37,8 @@ public class MyWorkController {
 			"createdAt", "updatedAt", "number", "title");
 	private static final Set<String> ALLOWED_SORT_DIRECTIONS = Set.of("asc", "desc");
 	private static final String DEFAULT_SORT = "number,asc";
-	private static final Set<String> FORBIDDEN_TARGET_PARAMS = Set.of("userId", "assigneeId");
+	private static final Set<String> FORBIDDEN_TARGET_PARAMS =
+			Set.of("userId", "assigneeId", "assignee");
 
 	private final MyWorkService myWorkService;
 

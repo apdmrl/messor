@@ -58,6 +58,7 @@ interface RenderOpts {
   canMove?: boolean
   moveDisabled?: boolean
   selectionDisabled?: boolean
+  includeArchived?: boolean
   selectedIssueKey?: string | null
 }
 
@@ -72,6 +73,7 @@ function renderBoard(opts: RenderOpts = {}) {
       canMove={opts.canMove ?? true}
       moveDisabled={opts.moveDisabled ?? false}
       selectionDisabled={opts.selectionDisabled ?? false}
+      includeArchived={opts.includeArchived ?? false}
       statusLabel={statusLabel}
       assigneeLabel={assigneeLabel}
       onSelect={onSelect}
@@ -233,6 +235,7 @@ describe('ProjectBoard', () => {
         canMove
         moveDisabled={false}
         selectionDisabled={false}
+        includeArchived={false}
         statusLabel={statusLabel}
         assigneeLabel={assigneeLabel}
         onSelect={() => {}}

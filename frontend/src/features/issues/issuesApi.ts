@@ -1,10 +1,14 @@
 import { apiRequest } from '../../app/apiClient'
+import {
+  serializeFilters,
+  PROJECT_FILTER_CONTEXT,
+} from './issueFilters'
+import type { IssueFilterState } from './issueFilters'
 import type {
   ArchiveIssueInput,
   CreateIssueInput,
   Issue,
   IssueActivity,
-  IssueListFilters,
   IssuePage,
   MoveIssueInput,
   UpdateIssueInput,
@@ -19,19 +23,17 @@ function encodeSegment(value: string): string {
 }
 
 /**
- * List active project issues with the fixed, server-approved bound parameters.
+ * List project issues with the URL-backed filters. The project key comes from
+ * the route, so the project context never emits a project parameter; only
+ * allowlisted, non-default values are sent.
  */
 export async function listIssues(
   projectKey: string,
-  filters: IssueListFilters,
+  filters: IssueFilterState,
 ): Promise<IssuePage> {
-  const query = new URLSearchParams({
-    page: String(filters.page),
-    size: String(filters.size),
-    sort: filters.sort,
-  })
+  const query = serializeFilters(filters, PROJECT_FILTER_CONTEXT).toString()
   return apiRequest<IssuePage>(
-    `${PROJECTS_URL}/${encodeSegment(projectKey)}/issues?${query.toString()}`,
+    `${PROJECTS_URL}/${encodeSegment(projectKey)}/issues${query ? `?${query}` : ''}`,
   )
 }
 

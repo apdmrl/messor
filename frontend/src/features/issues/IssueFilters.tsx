@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
-import type { ArchiveFilter, IssueFilterState, SortField } from '../issues/issueFilters'
-import { ISSUE_TYPES, issueTypeLabel } from '../issues/issueLabels'
+import type { ArchiveFilter, IssueFilterState, SortField } from './issueFilters'
+import { ISSUE_TYPES, issueTypeLabel } from './issueLabels'
 
 export interface ProjectOption {
   key: string
@@ -23,6 +23,8 @@ interface IssueFiltersProps {
   statuses: StatusOption[]
   /** When provided, an assignee filter is shown; otherwise it is omitted. */
   members: MemberOption[]
+  /** When true, a project selector is shown; otherwise it is omitted. */
+  showProject: boolean
   onChange: (patch: Partial<IssueFilterState>) => void
 }
 
@@ -50,6 +52,7 @@ export function IssueFilters({
   projects,
   statuses,
   members,
+  showProject,
   onChange,
 }: IssueFiltersProps): ReactElement {
   const select = (
@@ -86,14 +89,15 @@ export function IssueFilters({
 
   return (
     <div className="issue-filters">
-      {select(
-        'filter-project',
-        'project',
-        'Proje',
-        filters.project ?? '',
-        projects.map((p) => ({ value: p.key, label: p.name })),
-        'Tüm projeler',
-      )}
+      {showProject &&
+        select(
+          'filter-project',
+          'project',
+          'Proje',
+          filters.project ?? '',
+          projects.map((p) => ({ value: p.key, label: p.name })),
+          'Tüm projeler',
+        )}
       {select(
         'filter-type',
         'type',

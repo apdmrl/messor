@@ -36,12 +36,22 @@ export function normalizeWorkflowStatuses(
 /**
  * Order cards within a column using server rank ascending, then issue number
  * ascending, then issueKey as a final deterministic tie-breaker. Archived
- * issues never appear. Workflow position (not alphabetical status) is the
- * column order; status display labels come only from {@code workflowStatuses}.
+ * issues are excluded by default (they are never drop/reorder targets and never
+ * participate in DnD math); pass {@code includeArchived} only for read-only
+ * display when the archive filter includes archived issues. Workflow position
+ * (not alphabetical status) is the column order; status display labels come
+ * only from {@code workflowStatuses}.
  */
-export function columnIssues(issues: Issue[], statusCode: string): Issue[] {
+export function columnIssues(
+  issues: Issue[],
+  statusCode: string,
+  includeArchived = false,
+): Issue[] {
   return issues
-    .filter((issue) => !issue.archived && issue.statusCode === statusCode)
+    .filter(
+      (issue) =>
+        (includeArchived || !issue.archived) && issue.statusCode === statusCode,
+    )
     .slice()
     .sort(compareIssues)
 }
@@ -70,11 +80,12 @@ function compareIssues(a: Issue, b: Issue): number {
 export function buildColumns(
   workflowStatuses: WorkflowStatus[],
   issues: Issue[],
+  includeArchived = false,
 ): BoardColumn[] {
   return normalizeWorkflowStatuses(workflowStatuses).map((status) => ({
     statusCode: status.code,
     displayName: status.displayName,
-    issues: columnIssues(issues, status.code),
+    issues: columnIssues(issues, status.code, includeArchived),
   }))
 }
 

@@ -4,15 +4,15 @@ import type { ReactElement } from 'react'
 import { useMemo } from 'react'
 import { listProjects } from '../projects/projectsApi'
 import { getProject, listProjectMembers } from '../projects/projectsApi'
-import { parseFilters, serializeFilters } from '../issues/issueFilters'
+import { parseFilters, serializeFilters, MY_WORK_FILTER_CONTEXT } from '../issues/issueFilters'
 import type { IssueFilterState } from '../issues/issueFilters'
 import { issueTypeLabel } from '../issues/issueLabels'
-import { IssueFilters } from './IssueFilters'
-import type { ProjectOption, StatusOption, MemberOption } from './IssueFilters'
+import { IssueFilters } from '../issues/IssueFilters'
+import type { ProjectOption, StatusOption } from '../issues/IssueFilters'
 import { listMyWork } from './myWorkApi'
 import type { Issue } from '../issues/types'
 import './MyWorkPage.css'
-import './IssueFilters.css'
+import '../issues/IssueFilters.css'
 
 const GENERIC_ERROR = 'Görevlerim yüklenemedi. Lütfen tekrar deneyin.'
 const PROJECTS_ERROR = 'Proje listesi yüklenemedi. Lütfen tekrar deneyin.'
@@ -33,7 +33,10 @@ function memberLabel(firstName: string, lastName: string): string {
  */
 export function MyWorkPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams()
-  const filters = useMemo(() => parseFilters(searchParams), [searchParams])
+  const filters = useMemo(
+    () => parseFilters(searchParams, MY_WORK_FILTER_CONTEXT),
+    [searchParams],
+  )
 
   const myWorkQuery = useQuery({
     queryKey: ['my-work', filters],
@@ -103,24 +106,13 @@ export function MyWorkPage(): ReactElement {
       : [...statuses.entries()].map(([code, displayName]) => ({ code, displayName }))
   }, [filters.project, metaQuery.data])
 
-  const memberOptions: MemberOption[] = useMemo(() => {
-    const meta = metaQuery.data
-    if (filters.project === null || meta === undefined) {
-      return []
-    }
-    const assignees = meta.assigneeLabel.get(filters.project)
-    return assignees === undefined
-      ? []
-      : [...assignees.entries()].map(([id, label]) => ({ id, label }))
-  }, [filters.project, metaQuery.data])
-
   const updateFilters = (patch: Partial<IssueFilterState>): void => {
     const next = { ...filters, ...patch, page: 0 }
-    setSearchParams(serializeFilters(next))
+    setSearchParams(serializeFilters(next, MY_WORK_FILTER_CONTEXT))
   }
 
   const goToPage = (page: number): void => {
-    setSearchParams(serializeFilters({ ...filters, page }))
+    setSearchParams(serializeFilters({ ...filters, page }, MY_WORK_FILTER_CONTEXT))
   }
 
   const statusFor = (issue: Issue): string =>
@@ -158,7 +150,8 @@ export function MyWorkPage(): ReactElement {
           filters={filters}
           projects={projectOptions}
           statuses={statusOptions}
-          members={memberOptions}
+          members={[]}
+          showProject
           onChange={updateFilters}
         />
       )}

@@ -51,6 +51,8 @@ interface ProjectBoardProps {
   canMove: boolean
   moveDisabled: boolean
   selectionDisabled: boolean
+  /** When true, archived issues are shown as read-only cards (never movable). */
+  includeArchived: boolean
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void
@@ -64,6 +66,7 @@ export function ProjectBoard({
   canMove,
   moveDisabled,
   selectionDisabled,
+  includeArchived,
   statusLabel,
   assigneeLabel,
   onSelect,
@@ -81,7 +84,7 @@ export function ProjectBoard({
   // One normalized, immutable status sequence drives column order, card
   // previous/next movement controls, and cross-column keyboard math.
   const normalizedStatuses = normalizeWorkflowStatuses(workflowStatuses)
-  const columns = buildColumns(normalizedStatuses, issues)
+  const columns = buildColumns(normalizedStatuses, issues, includeArchived)
 
   // Records whether the most recent drag end was accepted as a real move. It is
   // written synchronously in handleDragEnd (which runs before the accessibility

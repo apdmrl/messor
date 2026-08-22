@@ -9,6 +9,7 @@ import { SessionContext } from '../../app/session'
 import { IssueWorkspacePage } from './IssueWorkspacePage'
 import type { ProjectDetail, ProjectMember } from '../projects/types'
 import type { Issue, IssueActivity, IssuePage } from './types'
+import type { IssueFilterState } from './issueFilters'
 
 const projectDetail: ProjectDetail = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -46,7 +47,16 @@ const memberMember: ProjectMember = {
 
 const members: ProjectMember[] = [adminMember, memberMember]
 
-const ISSUE_FILTERS = { page: 0, size: 100, sort: 'number,asc' }
+const ISSUE_FILTERS: IssueFilterState = {
+  project: null,
+  type: null,
+  status: null,
+  assignee: null,
+  archive: 'active',
+  sort: { field: 'number', direction: 'asc' },
+  page: 0,
+  size: 100,
+}
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
   return {
@@ -2767,6 +2777,74 @@ describe('IssueWorkspacePage', () => {
         expect(createCommentMock).toHaveBeenCalledTimes(1)
       })
     })
+  })
+})
+
+describe('IssueWorkspacePage URL filters', () => {
+  beforeEach(() => {
+    getProjectMock.mockReset()
+    listProjectMembersMock.mockReset()
+    listIssuesMock.mockReset()
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue(members)
+  })
+
+  it('deep link URL filters drive the exact issue-list query', async () => {
+    listIssuesMock.mockResolvedValue(pageWithIssues)
+    renderWorkspace(
+      '/projects/MES/board?type=BUG&status=IN_PROGRESS&assignee=user-1&archive=all&sort=title,desc&page=2&size=50',
+    )
+
+    await waitFor(() => {
+      expect(listIssuesMock).toHaveBeenCalledWith('MES', {
+        project: null,
+        type: 'BUG',
+        status: 'IN_PROGRESS',
+        assignee: 'user-1',
+        archive: 'all',
+        sort: { field: 'title', direction: 'desc' },
+        page: 2,
+        size: 50,
+      })
+    })
+  })
+
+  it('changing a filter resets the page to 0 in the URL and the query', async () => {
+    listIssuesMock.mockResolvedValue(pageWithIssues)
+    const user = userEvent.setup()
+    renderWorkspace('/projects/MES/board?page=3')
+
+    const type = await screen.findByLabelText('Tür')
+    await user.selectOptions(type, 'BUG')
+
+    await waitFor(() => {
+      const calls = listIssuesMock.mock.calls
+      const last = calls[calls.length - 1][1] as IssueFilterState
+      expect(last.page).toBe(0)
+      expect(last.type).toBe('BUG')
+    })
+  })
+
+  it('renders archived issues as read-only with no drag or move controls', async () => {
+    listIssuesMock.mockResolvedValue({
+      ...pageWithIssues,
+      items: [makeIssue({ archived: true, statusCode: 'DONE' })],
+    })
+    renderWorkspace('/projects/MES/board?archive=archived')
+
+    await screen.findByText('First task')
+
+    // The archived card is still selectable (opens the read-only drawer) but
+    // offers no drag handle and no move menu.
+    expect(
+      screen.getByRole('button', { name: /^MES-1,/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /sürükle/i }),
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: /taşıma menüsü/i }),
+    ).toBeNull()
   })
 })
 

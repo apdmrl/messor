@@ -75,13 +75,3 @@ export interface MoveIssueInput {
   afterIssueKey: string | null
   expectedVersion: number
 }
-
-/**
- * Fixed, serializable list query parameters. Task 10 owns user-facing filters;
- * this task uses a stable server-approved bound set so query keys stay exact.
- */
-export interface IssueListFilters {
-  page: number
-  size: number
-  sort: string
-}

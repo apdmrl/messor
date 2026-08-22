@@ -50,12 +50,30 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 	 * validated allowlist field/direction; an unvalidated client field is never
 	 * passed into the query.
 	 */
+	/**
+	 * Returns a page of a project's issues matching the optional
+	 * type/status/assignee/archive filters. The archived predicate is
+	 * {@code null} for ALL, {@code false} for ACTIVE (default) and {@code true}
+	 * for ARCHIVED. The assignee filter is applied only when non-null; an
+	 * assignee that is not a current member of the project matches no issue (an
+	 * issue's assignee is always a member), so the result is safely empty. The
+	 * ordering comes from the caller-constructed {@link Pageable}, built from a
+	 * validated allowlist field plus a final globally-unique {@code id ASC}
+	 * tie-breaker.
+	 */
 	@Query("""
 			select i from Issue i
 			where i.project.id = :projectId
-			  and i.archived = false
+			  and (:type is null or i.type = :type)
+			  and (:statusCode is null or i.workflowStatus.code = :statusCode)
+			  and (:assigneeId is null or i.assignee.id = :assigneeId)
+			  and (:archived is null or i.archived = :archived)
 			""")
-	Page<Issue> findActiveByProject(@Param("projectId") UUID projectId, Pageable pageable);
+	Page<Issue> findProjectIssues(@Param("projectId") UUID projectId,
+			@Param("type") IssueType type,
+			@Param("statusCode") String statusCode,
+			@Param("assigneeId") UUID assigneeId,
+			@Param("archived") Boolean archived, Pageable pageable);
 
 	/**
 	 * Returns a page of issues assigned to {@code userId} across every project

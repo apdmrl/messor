@@ -2,6 +2,7 @@ package io.github.apdmrl.messor.issue;
 
 import java.net.URI;
 import java.util.Set;
+import java.util.UUID;
 
 import io.github.apdmrl.messor.common.api.ApiProblemException;
 import io.github.apdmrl.messor.identity.MessorUserPrincipal;
@@ -56,6 +57,10 @@ public class IssueController {
 			@PathVariable String projectKey,
 			@RequestParam(value = "page", required = false) Integer page,
 			@RequestParam(value = "size", required = false) Integer size,
+			@RequestParam(value = "type", required = false) IssueType type,
+			@RequestParam(value = "status", required = false) String status,
+			@RequestParam(value = "assignee", required = false) UUID assignee,
+			@RequestParam(value = "archive", required = false) String archive,
 			HttpServletRequest request) {
 		int pageNum = page == null ? 0 : page;
 		int sizeNum = size == null ? 20 : size;
@@ -65,12 +70,25 @@ public class IssueController {
 		if (sizeNum < 1 || sizeNum > 100) {
 			throw validationFailed();
 		}
+		ArchiveFilter archiveFilter;
+		if (archive == null || archive.isBlank()) {
+			archiveFilter = ArchiveFilter.ACTIVE;
+		}
+		else {
+			try {
+				archiveFilter = ArchiveFilter.valueOf(archive.trim().toUpperCase());
+			}
+			catch (IllegalArgumentException ex) {
+				throw validationFailed();
+			}
+		}
 		// Read raw sort values from the request so Spring's List binding never
 		// comma-splits a single "field,direction" value, and so repeated sort
 		// parameters can be rejected explicitly.
 		String[] sortSpec = parseSort(resolveSort(request.getParameterValues("sort")));
 		IssuePageResponse response = issueService
-				.list(projectKey, principal, pageNum, sizeNum, sortSpec[0], sortSpec[1]);
+				.list(projectKey, principal, pageNum, sizeNum, sortSpec[0], sortSpec[1],
+						type, status, assignee, archiveFilter);
 		return ResponseEntity.ok()
 				.cacheControl(CacheControl.noStore())
 				.body(response);
