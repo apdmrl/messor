@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -952,6 +952,164 @@ describe('IssueWorkspacePage', () => {
       await waitFor(() => {
         expect(
           screen.queryByRole('button', { name: 'Arşivlemeyi onayla' }),
+        ).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('create/update/archive mutual exclusion', () => {
+    it('blocks opening or submitting create while an update is pending and keeps the edit form intact', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveUpdate: (value: Issue) => void = () => {}
+      updateIssueMock.mockImplementation(
+        () =>
+          new Promise<Issue>((resolve) => {
+            resolveUpdate = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Düzenle' }))
+      const titleInput = screen.getByLabelText('Başlık')
+      await user.clear(titleInput)
+      await user.type(titleInput, 'Renamed')
+      await user.click(screen.getByRole('button', { name: 'Güncelle' }))
+
+      // while the update is pending, create is disabled and cannot open
+      const createButton = await screen.findByRole('button', {
+        name: 'Yeni issue',
+      })
+      await waitFor(() => {
+        expect(createButton).toBeDisabled()
+        expect(createButton).toHaveAttribute('aria-disabled', 'true')
+      })
+      fireEvent.click(createButton)
+      expect(createIssueMock).not.toHaveBeenCalled()
+      // the active edit form is not replaced by a create form
+      expect(
+        screen.getByRole('button', { name: 'Güncelleniyor…' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Oluştur' }),
+      ).not.toBeInTheDocument()
+
+      resolveUpdate({ ...issue1, title: 'Renamed', version: 1 })
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+      })
+    })
+
+    it('blocks opening or submitting create while an archive is pending and keeps the confirmation intact', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveArchive: (value: Issue) => void = () => {}
+      archiveIssueMock.mockImplementation(
+        () =>
+          new Promise<Issue>((resolve) => {
+            resolveArchive = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Arşivle' }))
+      await user.click(
+        screen.getByRole('button', { name: 'Arşivlemeyi onayla' }),
+      )
+
+      await waitFor(() => {
+        expect(archiveIssueMock).toHaveBeenCalledTimes(1)
+      })
+
+      // while the archive is pending, create is disabled and cannot dismiss confirmation
+      const createButton = await screen.findByRole('button', {
+        name: 'Yeni issue',
+      })
+      expect(createButton).toBeDisabled()
+      expect(createButton).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(createButton)
+      expect(createIssueMock).not.toHaveBeenCalled()
+      // the archive confirmation is not dismissed
+      expect(
+        screen.getByRole('button', { name: 'Arşivlemeyi onayla' }),
+      ).toBeInTheDocument()
+
+      resolveArchive({ ...issue1, archived: true, version: 1 })
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: 'Arşivlemeyi onayla' }),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('blocks selection, edit and archive initiation while a create is pending', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveCreate: (value: Issue) => void = () => {}
+      createIssueMock.mockImplementation(
+        () =>
+          new Promise<Issue>((resolve) => {
+            resolveCreate = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      // select an issue so edit/archive controls are present
+      await selectIssue('MES-1')
+
+      // open the create form (selection remains) and submit
+      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      const pendingButton = await screen.findByRole('button', {
+        name: 'Oluşturuluyor…',
+      })
+      expect(pendingButton).toBeDisabled()
+
+      // issue selection is locked while create is pending
+      const secondButton = await screen.findByRole('button', { name: /MES-2/ })
+      expect(secondButton).toBeDisabled()
+      expect(secondButton).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(secondButton)
+      await waitFor(() => {
+        expect(getIssueMock).not.toHaveBeenCalledWith('MES-2')
+      })
+
+      // edit and archive initiation are blocked while create is pending
+      const editButton = await screen.findByRole('button', { name: 'Düzenle' })
+      expect(editButton).toBeDisabled()
+      expect(editButton).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(editButton)
+      const archiveButton = screen.getByRole('button', { name: 'Arşivle' })
+      expect(archiveButton).toBeDisabled()
+      expect(archiveButton).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(archiveButton)
+
+      // no update or archive API call starts
+      expect(updateIssueMock).not.toHaveBeenCalled()
+      expect(archiveIssueMock).not.toHaveBeenCalled()
+
+      resolveCreate(
+        makeIssue({ issueKey: 'MES-3', number: 3, title: 'Third task' }),
+      )
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: 'Oluştur' }),
         ).not.toBeInTheDocument()
       })
     })

@@ -298,7 +298,10 @@ export function IssueWorkspacePage(): ReactElement {
     },
   })
 
-  const selectionPending = updateMutation.isPending || archiveMutation.isPending
+  const anyMutationPending =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    archiveMutation.isPending
 
   useEffect(() => {
     if (focusIntent === null) {
@@ -336,6 +339,9 @@ export function IssueWorkspacePage(): ReactElement {
   }, [confirmingArchive, archiveMutation.isPending])
 
   const openCreate = (): void => {
+    if (anyMutationPending) {
+      return
+    }
     setActiveForm('create')
     setFormError(null)
     setBannerAlert(null)
@@ -352,6 +358,9 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const openEdit = (): void => {
+    if (anyMutationPending) {
+      return
+    }
     setFormError(null)
     setBannerAlert(null)
     setConfirmingArchive(false)
@@ -368,7 +377,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleSelect = (issueKey: string): void => {
-    if (selectionPending) {
+    if (anyMutationPending) {
       return
     }
     setSelectedIssueKey(issueKey)
@@ -380,7 +389,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleCreateSubmit = (values: IssueFormValues): void => {
-    if (createMutation.isPending) {
+    if (anyMutationPending) {
       return
     }
     createMutation.mutate({
@@ -392,7 +401,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleUpdateSubmit = (values: IssueFormValues): void => {
-    if (updateMutation.isPending || archiveMutation.isPending) {
+    if (anyMutationPending) {
       return
     }
     const current = issueQuery.data
@@ -407,7 +416,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleArchive = (): void => {
-    if (updateMutation.isPending) {
+    if (anyMutationPending) {
       return
     }
     setConfirmingArchive(true)
@@ -415,7 +424,7 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const handleArchiveConfirm = (): void => {
-    if (archiveMutation.isPending || updateMutation.isPending) {
+    if (anyMutationPending) {
       return
     }
     const current = issueQuery.data
@@ -467,6 +476,8 @@ export function IssueWorkspacePage(): ReactElement {
             ref={createButtonRef}
             className="issue-workspace__create"
             onClick={openCreate}
+            disabled={anyMutationPending}
+            aria-disabled={anyMutationPending}
           >
             Yeni issue
           </button>
@@ -576,7 +587,7 @@ export function IssueWorkspacePage(): ReactElement {
           <IssueList
             issues={issuesQuery.data.items}
             selectedIssueKey={selectedIssueKey}
-            selectionDisabled={selectionPending}
+            selectionDisabled={anyMutationPending}
             onSelect={handleSelect}
             statusLabel={statusLabel}
             assigneeLabel={assigneeLabel}
@@ -611,6 +622,7 @@ export function IssueWorkspacePage(): ReactElement {
               editing={activeForm === 'edit'}
               confirmingArchive={confirmingArchive}
               archivePending={archiveMutation.isPending}
+              actionsDisabled={anyMutationPending}
               onEdit={openEdit}
               onArchive={handleArchive}
               onConfirmArchive={handleArchiveConfirm}

@@ -15,6 +15,7 @@ interface IssueDetailsPanelProps {
   editing: boolean
   confirmingArchive: boolean
   archivePending: boolean
+  actionsDisabled: boolean
   onEdit: () => void
   onArchive: () => void
   onConfirmArchive: () => void
@@ -37,6 +38,7 @@ export function IssueDetailsPanel({
   editing,
   confirmingArchive,
   archivePending,
+  actionsDisabled,
   onEdit,
   onArchive,
   onConfirmArchive,
@@ -80,6 +82,8 @@ export function IssueDetailsPanel({
               className="issue-details__action"
               ref={editButtonRef}
               onClick={onEdit}
+              disabled={actionsDisabled}
+              aria-disabled={actionsDisabled}
             >
               Düzenle
             </button>
@@ -90,6 +94,8 @@ export function IssueDetailsPanel({
               className="issue-details__action issue-details__action--danger"
               ref={archiveTriggerRef}
               onClick={onArchive}
+              disabled={actionsDisabled}
+              aria-disabled={actionsDisabled}
             >
               Arşivle
             </button>
@@ -104,7 +110,8 @@ export function IssueDetailsPanel({
                 className="issue-details__action issue-details__action--danger"
                 ref={archiveConfirmRef}
                 onClick={onConfirmArchive}
-                disabled={archivePending}
+                disabled={archivePending || actionsDisabled}
+                aria-disabled={archivePending || actionsDisabled}
               >
                 Arşivlemeyi onayla
               </button>
@@ -113,7 +120,8 @@ export function IssueDetailsPanel({
                 className="issue-details__action"
                 ref={archiveCancelRef}
                 onClick={onCancelArchive}
-                disabled={archivePending}
+                disabled={archivePending || actionsDisabled}
+                aria-disabled={archivePending || actionsDisabled}
               >
                 Vazgeç
               </button>
