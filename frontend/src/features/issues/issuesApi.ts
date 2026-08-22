@@ -6,6 +6,7 @@ import type {
   IssueActivity,
   IssueListFilters,
   IssuePage,
+  MoveIssueInput,
   UpdateIssueInput,
 } from './types'
 
@@ -78,6 +79,18 @@ export async function archiveIssue(
       body: JSON.stringify(input),
     },
   )
+}
+
+export async function moveIssue(
+  issueKey: string,
+  input: MoveIssueInput,
+): Promise<Issue> {
+  return apiRequest<Issue>(`${ISSUES_URL}/${encodeSegment(issueKey)}/move`, {
+    method: 'PATCH',
+    csrf: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
 }
 
 export async function listIssueActivity(

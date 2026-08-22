@@ -11,14 +11,23 @@ import {
   getIssue,
   listIssueActivity,
   listIssues,
+  moveIssue,
   updateIssue,
 } from './issuesApi'
+import { applyOptimisticMove, computeMove } from './boardOrder'
 import { IssueDetailsPanel } from './IssueDetailsPanel'
 import { IssueForm } from './IssueForm'
 import type { IssueFormValues } from './IssueForm'
-import { IssueList } from './IssueList'
-import type { IssueActivity, IssueListFilters, IssueType } from './types'
+import { ProjectBoard } from './ProjectBoard'
+import type {
+  IssueActivity,
+  Issue,
+  IssueListFilters,
+  IssuePage,
+  IssueType,
+} from './types'
 import './IssueWorkspacePage.css'
+import './ProjectBoard.css'
 
 const ISSUE_LIST_FILTERS: IssueListFilters = {
   page: 0,
@@ -71,6 +80,30 @@ export function IssueWorkspacePage(): ReactElement {
   const [focusIntent, setFocusIntent] = useState<
     'edit' | 'archive' | 'archive-cancel' | 'list-heading' | null
   >(null)
+  const [focusIssueKey, setFocusIssueKey] = useState<string | null>(null)
+
+  /**
+   * Synchronous shared mutation guard. Mirrors {@code anyMutationPending} but
+   * updates immediately so handler-level guards and the move onMutate recheck
+   * cannot be bypassed by stale closures or same-tick synthetic events.
+   */
+  const mutationGuardRef = useRef(false)
+  /**
+   * Synchronous in-flight flag for the move mutation only. Set true the moment
+   * a move starts and cleared in onSettled so a second move cannot be started
+   * from a stale callback within the same tick, before React reflects isPending.
+   */
+  const moveInFlightRef = useRef(false)
+  useEffect(() => {
+    mutationGuardRef.current = anyMutationPending
+  })
+
+  useEffect(() => {
+    if (focusIssueKey !== null) {
+      document.getElementById(`kanban-card-${focusIssueKey}`)?.focus()
+      setFocusIssueKey(null)
+    }
+  }, [focusIssueKey])
 
   const createButtonRef = useRef<HTMLButtonElement>(null)
   const editButtonRef = useRef<HTMLButtonElement>(null)
@@ -298,10 +331,130 @@ export function IssueWorkspacePage(): ReactElement {
     },
   })
 
+  const moveMutation = useMutation({
+    mutationFn: (vars: {
+      issueKey: string
+      targetStatusCode: string
+      beforeIssueKey: string | null
+      afterIssueKey: string | null
+      expectedVersion: number
+      targetIndex: number
+    }) =>
+      moveIssue(vars.issueKey, {
+        targetStatusCode: vars.targetStatusCode,
+        beforeIssueKey: vars.beforeIssueKey,
+        afterIssueKey: vars.afterIssueKey,
+        expectedVersion: vars.expectedVersion,
+      }),
+    onMutate: async (vars) => {
+      // Recheck the shared mutation guard; stale or synthetic triggers cannot
+      // bypass the invariant because the ref flips synchronously.
+      if (mutationGuardRef.current) {
+        throw new Error('blocked')
+      }
+      const listKey = ['issues', key, ISSUE_LIST_FILTERS]
+      const detailKey = ['issue', vars.issueKey]
+      const activityKey = ['issue', vars.issueKey, 'activity']
+
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: listKey, exact: true }),
+        queryClient.cancelQueries({ queryKey: detailKey, exact: true }),
+      ])
+
+      const listSnapshot = queryClient.getQueryData<IssuePage>(listKey)
+      const detailSnapshot = queryClient.getQueryData<Issue>(detailKey)
+
+      if (listSnapshot !== undefined) {
+        queryClient.setQueryData(listKey, {
+          ...listSnapshot,
+          items: applyOptimisticMove(listSnapshot.items, {
+            draggedKey: vars.issueKey,
+            targetStatusCode: vars.targetStatusCode,
+            targetIndex: vars.targetIndex,
+          }),
+        })
+      }
+      if (detailSnapshot !== undefined && detailSnapshot.issueKey === vars.issueKey) {
+        queryClient.setQueryData(detailKey, {
+          ...detailSnapshot,
+          statusCode: vars.targetStatusCode,
+        })
+      }
+
+      return { listSnapshot, detailSnapshot, listKey, detailKey, activityKey }
+    },
+    onSuccess: (moved: Issue, _vars) => {
+      setBannerAlert({ kind: 'info', message: `${moved.issueKey} taşındı.` })
+      // Reconcile the moved issue with the authoritative server response. The
+      // pending-move invariant locks selection, so the moved issue is still the
+      // selected issue; guard the comparison to be safe against any drift.
+      const listKey = ['issues', key, ISSUE_LIST_FILTERS]
+      const list = queryClient.getQueryData<IssuePage>(listKey)
+      if (list !== undefined) {
+        queryClient.setQueryData(listKey, {
+          ...list,
+          items: list.items.map((item) =>
+            item.issueKey === moved.issueKey ? moved : item,
+          ),
+        })
+      }
+      if (selectedIssueKey === moved.issueKey) {
+        queryClient.setQueryData(['issue', moved.issueKey], moved)
+      }
+      setFocusIssueKey(moved.issueKey)
+    },
+    onError: async (error: unknown, vars, context) => {
+      // Restore every changed cache entry exactly.
+      if (context?.listSnapshot !== undefined) {
+        queryClient.setQueryData(context.listKey, context.listSnapshot)
+      }
+      if (context?.detailSnapshot !== undefined) {
+        queryClient.setQueryData(context.detailKey, context.detailSnapshot)
+      }
+
+      if (error instanceof ApiError) {
+        if (error.code === 'VERSION_CONFLICT') {
+          setBannerAlert({
+            kind: 'error',
+            message: ERROR_MESSAGES.VERSION_CONFLICT,
+          })
+          await refetchIssueCaches(vars.issueKey)
+          return
+        }
+        if (error.code === 'ISSUE_ARCHIVED') {
+          setBannerAlert({ kind: 'info', message: ERROR_MESSAGES.ISSUE_ARCHIVED })
+          await refetchIssueCaches(vars.issueKey)
+          setFocusIntent('list-heading')
+          return
+        }
+      }
+      setBannerAlert({ kind: 'error', message: GENERIC_ERROR })
+      setFocusIssueKey(vars.issueKey)
+    },
+    onSettled: (_data, _error, vars) => {
+      moveInFlightRef.current = false
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['issues', key, ISSUE_LIST_FILTERS],
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['issue', vars.issueKey],
+          exact: true,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['issue', vars.issueKey, 'activity'],
+          exact: true,
+        }),
+      ])
+    },
+  })
+
   const anyMutationPending =
     createMutation.isPending ||
     updateMutation.isPending ||
-    archiveMutation.isPending
+    archiveMutation.isPending ||
+    moveMutation.isPending
 
   useEffect(() => {
     if (focusIntent === null) {
@@ -445,6 +598,42 @@ export function IssueWorkspacePage(): ReactElement {
     setFocusIntent('archive')
   }
 
+  const handleMove = (
+    issueKey: string,
+    targetStatusCode: string,
+    targetIndex: number,
+  ): void => {
+    if (anyMutationPending || mutationGuardRef.current || moveInFlightRef.current) {
+      return
+    }
+    const issues = issuesQuery.data?.items
+    const statuses = projectQuery.data?.workflowStatuses ?? []
+    if (issues === undefined || statuses.length === 0) {
+      return
+    }
+    const result = computeMove({
+      workflowStatuses: statuses,
+      issues,
+      draggedKey: issueKey,
+      targetStatusCode,
+      targetIndex,
+    })
+    // A no-op or invalid/unknown target never reaches the API and never
+    // announces a successful move.
+    if (result.kind !== 'move') {
+      return
+    }
+    moveInFlightRef.current = true
+    moveMutation.mutate({
+      issueKey,
+      targetStatusCode,
+      beforeIssueKey: result.payload.beforeIssueKey,
+      afterIssueKey: result.payload.afterIssueKey,
+      expectedVersion: result.expectedVersion,
+      targetIndex: result.targetIndex,
+    })
+  }
+
   const selectedIssue = issueQuery.data
   const activity: IssueActivity[] | undefined = activityQuery.data
 
@@ -584,11 +773,15 @@ export function IssueWorkspacePage(): ReactElement {
         )}
 
         {issuesQuery.isSuccess && issuesQuery.data.items.length > 0 && (
-          <IssueList
+          <ProjectBoard
+            workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
             issues={issuesQuery.data.items}
             selectedIssueKey={selectedIssueKey}
+            canMove={canMutate}
+            moveDisabled={anyMutationPending}
             selectionDisabled={anyMutationPending}
             onSelect={handleSelect}
+            onMove={handleMove}
             statusLabel={statusLabel}
             assigneeLabel={assigneeLabel}
           />

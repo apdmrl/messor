@@ -65,6 +65,18 @@ export interface ArchiveIssueInput {
 }
 
 /**
+ * Move an issue to a target workflow status and position. The server derives
+ * rank and validates neighbors; the client only supplies the target status and
+ * an insertion neighbor (before XOR after), never a client-owned rank.
+ */
+export interface MoveIssueInput {
+  targetStatusCode: string
+  beforeIssueKey: string | null
+  afterIssueKey: string | null
+  expectedVersion: number
+}
+
+/**
  * Fixed, serializable list query parameters. Task 10 owns user-facing filters;
  * this task uses a stable server-approved bound set so query keys stay exact.
  */

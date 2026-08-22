@@ -434,4 +434,71 @@ describe('issuesApi', () => {
 
     expect(storageSet).not.toHaveBeenCalled()
   })
+
+  it('moveIssue PATCHes the exact move path with body, CSRF and JSON content type', async () => {
+    const moved = {
+      id: '11111111-1111-1111-1111-111111111111',
+      issueKey: 'MES-1',
+      projectKey: 'MES',
+      number: 1,
+      type: 'TASK',
+      title: 'First task',
+      description: null,
+      statusCode: 'IN_PROGRESS',
+      reporterId: '22222222-2222-2222-2222-222222222222',
+      assigneeId: null,
+      rank: 1024,
+      archived: false,
+      version: 1,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-02T00:00:00Z',
+    }
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse(moved))
+
+    const { moveIssue } = await loadModules()
+    const result = await moveIssue('MES-1', {
+      targetStatusCode: 'IN_PROGRESS',
+      beforeIssueKey: null,
+      afterIssueKey: 'MES-9',
+      expectedVersion: 0,
+    })
+
+    expect(result).toEqual(moved)
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      CSRF_URL,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    const moveCall = fetchSpy.mock.calls[1]
+    expect(moveCall[0]).toBe(`${ISSUES_URL}/MES-1/move`)
+    expect(moveCall[1].method).toBe('PATCH')
+    expect(moveCall[1].credentials).toBe('include')
+    expect(moveCall[1].headers).toMatchObject({
+      'Content-Type': 'application/json',
+      [CSRF_HEADER]: 'token-1',
+    })
+    expect(JSON.parse(moveCall[1].body)).toEqual({
+      targetStatusCode: 'IN_PROGRESS',
+      beforeIssueKey: null,
+      afterIssueKey: 'MES-9',
+      expectedVersion: 0,
+    })
+  })
+
+  it('moveIssue encodes the issue key path segment', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(csrfResponse('token-1'))
+      .mockResolvedValueOnce(jsonResponse({}))
+    const { moveIssue } = await loadModules()
+    await moveIssue('M E-1', {
+      targetStatusCode: 'DONE',
+      beforeIssueKey: null,
+      afterIssueKey: null,
+      expectedVersion: 0,
+    })
+    const moveCall = fetchSpy.mock.calls[1]
+    expect(moveCall[0]).toBe(`${ISSUES_URL}/M%20E-1/move`)
+  })
 })
