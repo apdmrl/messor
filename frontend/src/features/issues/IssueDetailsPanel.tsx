@@ -7,6 +7,7 @@ interface IssueDetailsPanelProps {
   issue: Issue
   activity: IssueActivity[] | undefined
   activityLoading: boolean
+  activityError: boolean
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   canMutate: boolean
@@ -19,12 +20,15 @@ interface IssueDetailsPanelProps {
   onCancelArchive: () => void
   editButtonRef: RefObject<HTMLButtonElement | null>
   archiveTriggerRef: RefObject<HTMLButtonElement | null>
+  archiveConfirmRef: RefObject<HTMLButtonElement | null>
+  archiveCancelRef: RefObject<HTMLButtonElement | null>
 }
 
 export function IssueDetailsPanel({
   issue,
   activity,
   activityLoading,
+  activityError,
   statusLabel,
   assigneeLabel,
   canMutate,
@@ -37,6 +41,8 @@ export function IssueDetailsPanel({
   onCancelArchive,
   editButtonRef,
   archiveTriggerRef,
+  archiveConfirmRef,
+  archiveCancelRef,
 }: IssueDetailsPanelProps): ReactElement {
   return (
     <section className="issue-details" aria-labelledby="issue-details-heading">
@@ -94,6 +100,7 @@ export function IssueDetailsPanel({
               <button
                 type="button"
                 className="issue-details__action issue-details__action--danger"
+                ref={archiveConfirmRef}
                 onClick={onConfirmArchive}
                 disabled={archivePending}
               >
@@ -102,6 +109,7 @@ export function IssueDetailsPanel({
               <button
                 type="button"
                 className="issue-details__action"
+                ref={archiveCancelRef}
                 onClick={onCancelArchive}
                 disabled={archivePending}
               >
@@ -119,12 +127,21 @@ export function IssueDetailsPanel({
             Aktivite yükleniyor…
           </p>
         )}
+        {!activityLoading && activityError && (
+          <p className="issue-details__status issue-details__status--error" role="alert">
+            Aktivite yüklenemedi. Lütfen tekrar deneyin.
+          </p>
+        )}
         {!activityLoading &&
+          !activityError &&
           activity !== undefined &&
           activity.length === 0 && (
             <p className="issue-details__empty">Henüz aktivite yok.</p>
           )}
-        {!activityLoading && activity !== undefined && activity.length > 0 && (
+        {!activityLoading &&
+          !activityError &&
+          activity !== undefined &&
+          activity.length > 0 && (
           <IssueActivityList
             activities={activity}
             statusLabel={statusLabel}

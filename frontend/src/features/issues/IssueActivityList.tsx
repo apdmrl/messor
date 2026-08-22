@@ -13,6 +13,52 @@ interface IssueActivityListProps {
  * summary object is never JSON-serialized, stringified, or injected as HTML;
  * every value is coerced into a plain text label.
  */
+const UPDATED_FIELD_LABELS: Record<string, string> = {
+  title: 'Başlık',
+  description: 'Açıklama',
+  assigneeId: 'Atanan',
+}
+
+const FALLBACK_FIELDS = 'bilinmeyen alanlar'
+const FALLBACK_STATUS = 'bilinmeyen durum'
+const FALLBACK_ASSIGNEE = 'Bilinmeyen atanan'
+
+function changedFieldsLabel(raw: unknown): string {
+  if (!Array.isArray(raw)) {
+    return FALLBACK_FIELDS
+  }
+  const labels: string[] = []
+  for (const field of raw) {
+    if (typeof field === 'string' && field in UPDATED_FIELD_LABELS) {
+      labels.push(UPDATED_FIELD_LABELS[field])
+    }
+  }
+  if (labels.length === 0) {
+    return FALLBACK_FIELDS
+  }
+  return [...new Set(labels)].join(', ')
+}
+
+function assigneeLabelSafe(
+  raw: unknown,
+  assigneeLabel: (id: string | null) => string,
+): string {
+  if (raw === null) {
+    return assigneeLabel(null)
+  }
+  if (typeof raw === 'string') {
+    return assigneeLabel(raw)
+  }
+  return FALLBACK_ASSIGNEE
+}
+
+function statusLabelSafe(
+  raw: unknown,
+  statusLabel: (code: string) => string,
+): string {
+  return typeof raw === 'string' ? statusLabel(raw) : FALLBACK_STATUS
+}
+
 function activityText(
   activity: IssueActivity,
   statusLabel: (code: string) => string,
@@ -40,26 +86,13 @@ function activityText(
         rawType === 'STORY' || rawType === 'TASK' || rawType === 'BUG'
           ? issueTypeLabel(rawType as IssueType)
           : 'bilinmeyen tür'
-      const status =
-        typeof summary.statusCode === 'string'
-          ? statusLabel(summary.statusCode)
-          : 'bilinmeyen durum'
-      const assignee = assigneeLabel(
-        typeof summary.assigneeId === 'string' ? summary.assigneeId : null,
-      )
+      const status = statusLabelSafe(summary.statusCode, statusLabel)
+      const assignee = assigneeLabelSafe(summary.assigneeId, assigneeLabel)
       return `${activityLabel('CREATED')}: ${type}, ${status}, ${assignee}`
     }
     case 'UPDATED': {
-      const fields = Array.isArray(summary.changedFields)
-        ? summary.changedFields.filter(
-            (field): field is string => typeof field === 'string',
-          )
-        : []
-      const changed =
-        fields.length > 0 ? fields.join(', ') : 'bilinmeyen alanlar'
-      const assignee = assigneeLabel(
-        typeof summary.assigneeId === 'string' ? summary.assigneeId : null,
-      )
+      const changed = changedFieldsLabel(summary.changedFields)
+      const assignee = assigneeLabelSafe(summary.assigneeId, assigneeLabel)
       return `${activityLabel('UPDATED')}: ${changed}, ${assignee}`
     }
     case 'MOVED': {
@@ -74,7 +107,8 @@ function activityText(
       return `${activityLabel('MOVED')}: ${from} → ${to}`
     }
     case 'ARCHIVED': {
-      return activityLabel('ARCHIVED')
+      const status = statusLabelSafe(summary.statusCode, statusLabel)
+      return `${activityLabel('ARCHIVED')}: ${status}`
     }
     default: {
       return 'Bilinmeyen etkinlik'

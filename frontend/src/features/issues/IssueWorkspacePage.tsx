@@ -28,6 +28,10 @@ const ISSUE_LIST_FILTERS: IssueListFilters = {
 
 const GENERIC_ERROR = 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'
 const LIST_ERROR_FALLBACK = 'İssue’lar yüklenemedi. Lütfen tekrar deneyin.'
+const PROJECT_ERROR_FALLBACK =
+  'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.'
+const MEMBERS_ERROR_FALLBACK = 'Üye listesi yüklenemedi. Lütfen tekrar deneyin.'
+const DETAIL_ERROR_FALLBACK = 'Issue detayı yüklenemedi. Lütfen tekrar deneyin.'
 
 const ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_FAILED:
@@ -64,12 +68,20 @@ export function IssueWorkspacePage(): ReactElement {
     kind: 'error' | 'info'
     message: string
   } | null>(null)
+  const [focusIntent, setFocusIntent] = useState<
+    'edit' | 'archive' | 'archive-cancel' | 'list-heading' | null
+  >(null)
 
   const createButtonRef = useRef<HTMLButtonElement>(null)
   const editButtonRef = useRef<HTMLButtonElement>(null)
   const archiveTriggerRef = useRef<HTMLButtonElement>(null)
+  const archiveConfirmRef = useRef<HTMLButtonElement>(null)
+  const archiveCancelRef = useRef<HTMLButtonElement>(null)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const listHeadingRef = useRef<HTMLHeadingElement>(null)
+  const mutationScopeRef = useRef<{ issueKey: string; version: number } | null>(
+    null,
+  )
 
   const projectQuery = useQuery({
     queryKey: ['projects', key],
@@ -177,15 +189,15 @@ export function IssueWorkspacePage(): ReactElement {
 
   const updateMutation = useMutation({
     mutationFn: (values: IssueFormValues) => {
-      const current = issueQuery.data
-      if (current === undefined) {
+      const scope = mutationScopeRef.current
+      if (scope === null) {
         throw new Error('Seçili issue bulunamadı.')
       }
-      return updateIssue(current.issueKey, {
+      return updateIssue(scope.issueKey, {
         title: values.title,
         description: values.description === '' ? null : values.description,
         assigneeId: values.assigneeId === '' ? null : values.assigneeId,
-        expectedVersion: current.version,
+        expectedVersion: scope.version,
       })
     },
     onSuccess: async (updated) => {
@@ -206,24 +218,23 @@ export function IssueWorkspacePage(): ReactElement {
           exact: true,
         }),
       ])
-      editButtonRef.current?.focus()
+      setFocusIntent('edit')
     },
     onError: async (error: unknown) => {
-      if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') {
-        if (selectedIssueKey !== null) {
-          await refetchIssueCaches(selectedIssueKey)
+      const scope = mutationScopeRef.current
+      if (scope !== null && error instanceof ApiError) {
+        if (error.code === 'VERSION_CONFLICT') {
+          await refetchIssueCaches(scope.issueKey)
+          setFormError(ERROR_MESSAGES.VERSION_CONFLICT)
+          return
         }
-        setFormError(ERROR_MESSAGES.VERSION_CONFLICT)
-        return
-      }
-      if (error instanceof ApiError && error.code === 'ISSUE_ARCHIVED') {
-        if (selectedIssueKey !== null) {
-          await refetchIssueCaches(selectedIssueKey)
+        if (error.code === 'ISSUE_ARCHIVED') {
+          await refetchIssueCaches(scope.issueKey)
+          setActiveForm(null)
+          setBannerAlert({ kind: 'info', message: ERROR_MESSAGES.ISSUE_ARCHIVED })
+          setFocusIntent('list-heading')
+          return
         }
-        setActiveForm(null)
-        setBannerAlert({ kind: 'info', message: ERROR_MESSAGES.ISSUE_ARCHIVED })
-        editButtonRef.current?.focus()
-        return
       }
       setFormError(safeErrorMessage(error))
     },
@@ -231,18 +242,21 @@ export function IssueWorkspacePage(): ReactElement {
 
   const archiveMutation = useMutation({
     mutationFn: () => {
-      const current = issueQuery.data
-      if (current === undefined) {
+      const scope = mutationScopeRef.current
+      if (scope === null) {
         throw new Error('Seçili issue bulunamadı.')
       }
-      return archiveIssue(current.issueKey, {
-        expectedVersion: current.version,
+      return archiveIssue(scope.issueKey, {
+        expectedVersion: scope.version,
       })
     },
     onSuccess: async (archived) => {
       setConfirmingArchive(false)
       setBannerAlert({ kind: 'info', message: 'Issue arşivlendi.' })
-      setSelectedIssueKey(null)
+      if (selectedIssueKey === archived.issueKey) {
+        setSelectedIssueKey(null)
+        setFocusIntent('list-heading')
+      }
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['issues', key, ISSUE_LIST_FILTERS],
@@ -257,34 +271,55 @@ export function IssueWorkspacePage(): ReactElement {
           exact: true,
         }),
       ])
-      listHeadingRef.current?.focus()
     },
     onError: async (error: unknown) => {
-      if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') {
-        if (selectedIssueKey !== null) {
-          await refetchIssueCaches(selectedIssueKey)
+      const scope = mutationScopeRef.current
+      if (scope !== null && error instanceof ApiError) {
+        if (error.code === 'VERSION_CONFLICT') {
+          await refetchIssueCaches(scope.issueKey)
+          setBannerAlert({
+            kind: 'error',
+            message: ERROR_MESSAGES.VERSION_CONFLICT,
+          })
+          return
         }
-        setBannerAlert({
-          kind: 'error',
-          message: ERROR_MESSAGES.VERSION_CONFLICT,
-        })
-        return
-      }
-      if (error instanceof ApiError && error.code === 'ISSUE_ARCHIVED') {
-        if (selectedIssueKey !== null) {
-          await refetchIssueCaches(selectedIssueKey)
+        if (error.code === 'ISSUE_ARCHIVED') {
+          await refetchIssueCaches(scope.issueKey)
+          setConfirmingArchive(false)
+          setBannerAlert({
+            kind: 'info',
+            message: ERROR_MESSAGES.ISSUE_ARCHIVED,
+          })
+          return
         }
-        setConfirmingArchive(false)
-        setBannerAlert({
-          kind: 'info',
-          message: ERROR_MESSAGES.ISSUE_ARCHIVED,
-        })
-        return
       }
       setConfirmingArchive(false)
       setBannerAlert({ kind: 'error', message: safeErrorMessage(error) })
     },
   })
+
+  const selectionPending = updateMutation.isPending || archiveMutation.isPending
+
+  useEffect(() => {
+    if (focusIntent === null) {
+      return
+    }
+    switch (focusIntent) {
+      case 'edit':
+        editButtonRef.current?.focus()
+        break
+      case 'archive':
+        archiveTriggerRef.current?.focus()
+        break
+      case 'archive-cancel':
+        archiveCancelRef.current?.focus()
+        break
+      case 'list-heading':
+        listHeadingRef.current?.focus()
+        break
+    }
+    setFocusIntent(null)
+  }, [focusIntent])
 
   useEffect(() => {
     if (!confirmingArchive) {
@@ -293,6 +328,7 @@ export function IssueWorkspacePage(): ReactElement {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape' && !archiveMutation.isPending) {
         setConfirmingArchive(false)
+        setFocusIntent('archive')
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -327,10 +363,13 @@ export function IssueWorkspacePage(): ReactElement {
     }
     setActiveForm(null)
     setFormError(null)
-    editButtonRef.current?.focus()
+    setFocusIntent('edit')
   }
 
   const handleSelect = (issueKey: string): void => {
+    if (selectionPending) {
+      return
+    }
     setSelectedIssueKey(issueKey)
     setConfirmingArchive(false)
     if (activeForm === 'edit') {
@@ -355,11 +394,43 @@ export function IssueWorkspacePage(): ReactElement {
     if (updateMutation.isPending) {
       return
     }
+    const current = issueQuery.data
+    if (current === undefined) {
+      return
+    }
+    mutationScopeRef.current = {
+      issueKey: current.issueKey,
+      version: current.version,
+    }
     updateMutation.mutate(values)
   }
 
   const handleArchive = (): void => {
     setConfirmingArchive(true)
+    setFocusIntent('archive-cancel')
+  }
+
+  const handleArchiveConfirm = (): void => {
+    if (archiveMutation.isPending) {
+      return
+    }
+    const current = issueQuery.data
+    if (current === undefined) {
+      return
+    }
+    mutationScopeRef.current = {
+      issueKey: current.issueKey,
+      version: current.version,
+    }
+    archiveMutation.mutate()
+  }
+
+  const handleCancelArchive = (): void => {
+    if (archiveMutation.isPending) {
+      return
+    }
+    setConfirmingArchive(false)
+    setFocusIntent('archive')
   }
 
   const selectedIssue = issueQuery.data
@@ -368,9 +439,6 @@ export function IssueWorkspacePage(): ReactElement {
   return (
     <div className="issue-workspace">
       <nav className="issue-workspace__nav" aria-label="Proje gezinme">
-        <Link className="issue-workspace__back" to={`/projects/${key}/board`}>
-          Board’a dön
-        </Link>
         <Link className="issue-workspace__back" to={`/projects/${key}/settings`}>
           Proje ayarları
         </Link>
@@ -381,9 +449,13 @@ export function IssueWorkspacePage(): ReactElement {
 
       <header className="issue-workspace__header">
         <div className="issue-workspace__heading-block">
-          <h2 className="issue-workspace__heading">
-            {projectQuery.data?.name ?? 'İssue yönetimi'}
-          </h2>
+          {projectQuery.isError ? (
+            <h2 className="issue-workspace__heading">Proje yüklenemedi</h2>
+          ) : (
+            <h2 className="issue-workspace__heading">
+              {projectQuery.data?.name ?? 'İssue yönetimi'}
+            </h2>
+          )}
           <p className="issue-workspace__key">{key}</p>
         </div>
         {canMutate && (
@@ -404,6 +476,27 @@ export function IssueWorkspacePage(): ReactElement {
           role={bannerAlert.kind === 'error' ? 'alert' : 'status'}
         >
           {bannerAlert.message}
+        </p>
+      )}
+
+      {projectQuery.isLoading && (
+        <p className="issue-workspace__status" role="status">
+          Proje yükleniyor…
+        </p>
+      )}
+      {projectQuery.isError && (
+        <p className="issue-workspace__error" role="alert">
+          {PROJECT_ERROR_FALLBACK}
+        </p>
+      )}
+      {membersQuery.isLoading && (
+        <p className="issue-workspace__status" role="status">
+          Üyeler yükleniyor…
+        </p>
+      )}
+      {membersQuery.isError && (
+        <p className="issue-workspace__error" role="alert">
+          {MEMBERS_ERROR_FALLBACK}
         </p>
       )}
 
@@ -480,36 +573,50 @@ export function IssueWorkspacePage(): ReactElement {
           <IssueList
             issues={issuesQuery.data.items}
             selectedIssueKey={selectedIssueKey}
+            selectionDisabled={selectionPending}
             onSelect={handleSelect}
             statusLabel={statusLabel}
             assigneeLabel={assigneeLabel}
           />
         )}
 
-        {selectedIssueKey !== null && selectedIssue !== undefined && (
-          <IssueDetailsPanel
-            issue={selectedIssue}
-            activity={activity}
-            activityLoading={activityQuery.isLoading}
-            statusLabel={statusLabel}
-            assigneeLabel={assigneeLabel}
-            canMutate={canMutate}
-            editing={activeForm === 'edit'}
-            confirmingArchive={confirmingArchive}
-            archivePending={archiveMutation.isPending}
-            onEdit={openEdit}
-            onArchive={handleArchive}
-            onConfirmArchive={() => {
-              if (archiveMutation.isPending) {
-                return
-              }
-              archiveMutation.mutate()
-            }}
-            onCancelArchive={() => setConfirmingArchive(false)}
-            editButtonRef={editButtonRef}
-            archiveTriggerRef={archiveTriggerRef}
-          />
+        {selectedIssueKey !== null && issueQuery.isLoading && (
+          <p className="issue-workspace__status" role="status">
+            Issue yükleniyor…
+          </p>
         )}
+
+        {selectedIssueKey !== null && issueQuery.isError && (
+          <p className="issue-workspace__error" role="alert">
+            {DETAIL_ERROR_FALLBACK}
+          </p>
+        )}
+
+        {selectedIssueKey !== null &&
+          !issueQuery.isLoading &&
+          !issueQuery.isError &&
+          selectedIssue !== undefined && (
+            <IssueDetailsPanel
+              issue={selectedIssue}
+              activity={activity}
+              activityLoading={activityQuery.isLoading}
+              activityError={activityQuery.isError}
+              statusLabel={statusLabel}
+              assigneeLabel={assigneeLabel}
+              canMutate={canMutate}
+              editing={activeForm === 'edit'}
+              confirmingArchive={confirmingArchive}
+              archivePending={archiveMutation.isPending}
+              onEdit={openEdit}
+              onArchive={handleArchive}
+              onConfirmArchive={handleArchiveConfirm}
+              onCancelArchive={handleCancelArchive}
+              editButtonRef={editButtonRef}
+              archiveTriggerRef={archiveTriggerRef}
+              archiveConfirmRef={archiveConfirmRef}
+              archiveCancelRef={archiveCancelRef}
+            />
+          )}
       </section>
     </div>
   )

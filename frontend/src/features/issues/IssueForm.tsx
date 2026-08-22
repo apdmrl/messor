@@ -88,7 +88,7 @@ export function IssueForm({
     onSubmit({
       type,
       title: title.trim(),
-      description: description.trim(),
+      description,
       assigneeId: assigneeId === '' ? '' : assigneeId,
     })
   }

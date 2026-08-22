@@ -5,6 +5,7 @@ import type { Issue } from './types'
 interface IssueListProps {
   issues: Issue[]
   selectedIssueKey: string | null
+  selectionDisabled?: boolean
   onSelect: (issueKey: string) => void
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
@@ -13,6 +14,7 @@ interface IssueListProps {
 export function IssueList({
   issues,
   selectedIssueKey,
+  selectionDisabled = false,
   onSelect,
   statusLabel,
   assigneeLabel,
@@ -28,6 +30,8 @@ export function IssueList({
               className="issue-list__button"
               aria-current={selected}
               aria-pressed={selected}
+              disabled={selectionDisabled}
+              aria-disabled={selectionDisabled}
               onClick={() => onSelect(issue.issueKey)}
             >
               <span className="issue-list__key">{issue.issueKey}</span>

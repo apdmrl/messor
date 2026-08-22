@@ -766,4 +766,458 @@ describe('IssueWorkspacePage', () => {
       expect((window as unknown as { __xss?: number }).__xss).toBeUndefined()
     })
   })
+
+  describe('query loading and error states', () => {
+    it('shows a loading status while the project is fetching', async () => {
+      getProjectMock.mockImplementation(
+        () => new Promise<ProjectDetail>(() => {}),
+      )
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(emptyPage)
+      renderWorkspace()
+
+      expect(await screen.findByText('Proje yükleniyor…')).toBeInTheDocument()
+    })
+
+    it('shows a safe error and no mutation authority when the project fails', async () => {
+      getProjectMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal project secret'),
+      )
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(emptyPage)
+      renderWorkspace()
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      expect(
+        screen.queryByRole('button', { name: 'Yeni issue' }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('İssue yönetimi')).not.toBeInTheDocument()
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal project secret')
+    })
+
+    it('shows a loading status while members are fetching', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockImplementation(
+        () => new Promise<ProjectMember[]>(() => {}),
+      )
+      listIssuesMock.mockResolvedValue(emptyPage)
+      renderWorkspace()
+
+      expect(await screen.findByText('Üyeler yükleniyor…')).toBeInTheDocument()
+    })
+
+    it('shows a safe error when members fail to load', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal members secret'),
+      )
+      listIssuesMock.mockResolvedValue(emptyPage)
+      renderWorkspace()
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Üye listesi yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal members secret')
+    })
+
+    it('shows a loading status for a selected issue detail', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockImplementation(
+        () => new Promise<Issue>(() => {}),
+      )
+      listIssueActivityMock.mockResolvedValue(activity)
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(await screen.findByText('Issue yükleniyor…')).toBeInTheDocument()
+    })
+
+    it('shows a safe error instead of an empty detail when the selected issue fails', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal detail secret'),
+      )
+      listIssueActivityMock.mockResolvedValue(activity)
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Issue detayı yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal detail secret')
+    })
+
+    it('shows a safe error when the selected issue activity fails', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal activity secret'),
+      )
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Aktivite yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal activity secret')
+    })
+  })
+
+  describe('edit focus lifecycle', () => {
+    it('returns focus to the edit trigger after cancelling the edit form', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Düzenle' }))
+      await user.click(screen.getByRole('button', { name: 'Vazgeç' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+      })
+    })
+
+    it('returns focus to the edit trigger after Escape from the edit form', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Düzenle' }))
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+      })
+    })
+
+    it('returns focus to the edit trigger after a successful update', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      updateIssueMock.mockResolvedValue({ ...issue1, title: 'Renamed', version: 1 })
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Düzenle' }))
+      const titleInput = screen.getByLabelText('Başlık')
+      await user.clear(titleInput)
+      await user.type(titleInput, 'Renamed')
+      await user.click(screen.getByRole('button', { name: 'Güncelle' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+      })
+    })
+  })
+
+  describe('archive focus lifecycle', () => {
+    it('moves focus into the archive confirmation on open', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Arşivle' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Vazgeç' })).toHaveFocus()
+      })
+    })
+
+    it('returns focus to the archive trigger after cancelling the confirmation', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Arşivle' }))
+      await user.click(screen.getByRole('button', { name: 'Vazgeç' }))
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Arşivle' })).toHaveFocus()
+      })
+    })
+
+    it('returns focus to the archive trigger after Escape from the confirmation', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Arşivle' }))
+      await user.keyboard('{Escape}')
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Arşivle' })).toHaveFocus()
+      })
+    })
+  })
+
+  describe('pending mutation selection race', () => {
+    it('locks issue selection while an update is pending and applies the result to the right issue', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveUpdate: (value: Issue) => void = () => {}
+      updateIssueMock.mockImplementation(
+        () =>
+          new Promise<Issue>((resolve) => {
+            resolveUpdate = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Düzenle' }))
+      const titleInput = screen.getByLabelText('Başlık')
+      await user.clear(titleInput)
+      await user.type(titleInput, 'Renamed')
+      await user.click(screen.getByRole('button', { name: 'Güncelle' }))
+
+      const secondButton = await screen.findByRole('button', { name: /MES-2/ })
+      expect(secondButton).toBeDisabled()
+      expect(secondButton).toHaveAttribute('aria-disabled', 'true')
+      await user.click(secondButton)
+      expect(
+        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+      ).toBeInTheDocument()
+
+      resolveUpdate({ ...issue1, title: 'Renamed', version: 1 })
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Düzenle' })).toHaveFocus()
+      })
+      expect(
+        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('heading', { name: 'MES-2', level: 3 }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('locks issue selection while an archive is pending and only closes on the archived issue', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveArchive: (value: Issue) => void = () => {}
+      archiveIssueMock.mockImplementation(
+        () =>
+          new Promise<Issue>((resolve) => {
+            resolveArchive = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await user.click(await screen.findByRole('button', { name: 'Arşivle' }))
+      await user.click(
+        screen.getByRole('button', { name: 'Arşivlemeyi onayla' }),
+      )
+
+      const secondButton = await screen.findByRole('button', { name: /MES-2/ })
+      expect(secondButton).toBeDisabled()
+      await user.click(secondButton)
+      expect(
+        screen.getByRole('heading', { name: 'MES-1', level: 3 }),
+      ).toBeInTheDocument()
+
+      resolveArchive({ ...issue1, archived: true, version: 1 })
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'MES-1', level: 3 }),
+        ).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('activity summary safety', () => {
+    it('renders an ARCHIVED activity with a controlled status label', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue([
+        {
+          id: 'act-archived',
+          type: 'ARCHIVED',
+          actorId: adminMember.userId,
+          summary: { statusCode: 'DONE' },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(
+        await screen.findByText('Arşivlendi: Bitti'),
+      ).toBeInTheDocument()
+    })
+
+    it('maps only whitelisted UPDATED fields to safe Turkish labels', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue([
+        {
+          id: 'act-updated',
+          type: 'UPDATED',
+          actorId: adminMember.userId,
+          summary: {
+            changedFields: [
+              'title',
+              'description',
+              'assigneeId',
+              '<script>window.__xss=3</script>',
+              'pwned',
+            ],
+            assigneeId: null,
+          },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(
+        await screen.findByText(
+          'Güncellendi: Başlık, Açıklama, Atanan, Atanmamış',
+        ),
+      ).toBeInTheDocument()
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('<script')
+      expect(body).not.toContain('window.__xss')
+      expect(body).not.toContain('changedFields')
+      expect(body).not.toContain('pwned')
+    })
+
+    it('produces a safe fallback when UPDATED changedFields are not an array or are unknown', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue([
+        {
+          id: 'act-updated-bad',
+          type: 'UPDATED',
+          actorId: adminMember.userId,
+          summary: { changedFields: '<script>x</script>', assigneeId: null },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(
+        await screen.findByText('Güncellendi: bilinmeyen alanlar, Atanmamış'),
+      ).toBeInTheDocument()
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('<script')
+    })
+
+    it('uses a safe fallback for an invalid assigneeId type', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue([
+        {
+          id: 'act-updated-assignee',
+          type: 'UPDATED',
+          actorId: adminMember.userId,
+          summary: { changedFields: ['title'], assigneeId: 12345 },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+      ])
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(
+        await screen.findByText('Güncellendi: Başlık, Bilinmeyen atanan'),
+      ).toBeInTheDocument()
+    })
+
+    it('handles hostile CREATED and MOVED summaries without leaking raw values', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue([
+        {
+          id: 'act-created-bad',
+          type: 'CREATED',
+          actorId: adminMember.userId,
+          summary: { type: 'BOGUS', statusCode: 7, assigneeId: { evil: true } },
+          createdAt: '2026-01-01T00:00:00Z',
+        },
+        {
+          id: 'act-moved-bad',
+          type: 'MOVED',
+          actorId: adminMember.userId,
+          summary: { fromStatusCode: ['x'], toStatusCode: 9 },
+          createdAt: '2026-01-02T00:00:00Z',
+        },
+      ])
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      expect(
+        await screen.findByText(
+          'Oluşturuldu: bilinmeyen tür, bilinmeyen durum, Bilinmeyen atanan',
+        ),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Durum değişti: bilinmeyen → bilinmeyen'),
+      ).toBeInTheDocument()
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('BOGUS')
+      expect(body).not.toContain('evil')
+    })
+  })
 })
