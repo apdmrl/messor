@@ -124,6 +124,10 @@ function renderDrawer(options: RenderOptions = {}): {
 describe('IssueDrawer', () => {
   beforeEach(() => {
     listIssueCommentsMock.mockReset()
+    // Default to a valid empty data set so the comments query never resolves to
+    // undefined (which triggers React Query's "Query data cannot be undefined"
+    // warning) in tests that open the comments tab without stubbing a list.
+    listIssueCommentsMock.mockResolvedValue([])
   })
 
   it('renders an accessible labelled dialog with the controlled issue heading', () => {
@@ -206,6 +210,30 @@ describe('IssueDrawer', () => {
     const { onClose } = renderDrawer({ escapeBlocked: true })
     await userEvent.keyboard('{Escape}')
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('disables the close button while busy and never closes via it', async () => {
+    const { onClose } = renderDrawer({ escapeBlocked: true })
+    const close = screen.getByRole('button', { name: /kapat/i })
+    expect(close).toBeDisabled()
+    expect(close).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(close)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('does not close via the backdrop while busy', async () => {
+    const { onClose } = renderDrawer({ escapeBlocked: true })
+    const backdrop = document.querySelector('.issue-drawer__backdrop')
+    expect(backdrop).not.toBeNull()
+    await userEvent.click(backdrop as Element)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes via the backdrop when nothing blocks it', async () => {
+    const { onClose } = renderDrawer()
+    const backdrop = document.querySelector('.issue-drawer__backdrop')
+    await userEvent.click(backdrop as Element)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('traps Tab focus within the drawer', async () => {

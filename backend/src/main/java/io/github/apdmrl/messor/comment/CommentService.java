@@ -15,6 +15,7 @@ import io.github.apdmrl.messor.project.ProjectPermission;
 import io.github.apdmrl.messor.project.ProjectRole;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,11 +29,13 @@ import org.springframework.transaction.annotation.Transactional;
  * persistent project membership plus the authenticated principal; a
  * client-supplied author, issue or project is never trusted.</p>
  *
- * <p>Concurrency: create appends a new row (no conflict). Edit and delete lock
- * the comment row with a pessimistic write lock, then recheck tombstone state,
- * authorization and {@code expectedVersion} after the lock. Two concurrent
- * requests carrying the same expectedVersion serialize: exactly one succeeds
- * and the stale waiter returns {@code 409 VERSION_CONFLICT}.</p>
+ * <p>Concurrency: create takes a pessimistic write lock on the issue row before
+ * inserting, then rechecks the archived flag after the wait, so a concurrent
+ * archive/update can never slip a new comment in after the archived check. Edit
+ * and delete lock the comment row with a pessimistic write lock, then recheck
+ * tombstone state, authorization and {@code expectedVersion} after the lock.
+ * Two concurrent requests carrying the same expectedVersion serialize: exactly
+ * one succeeds and the stale waiter returns {@code 409 VERSION_CONFLICT}.</p>
  */
 @Service
 public class CommentService {
@@ -79,11 +82,20 @@ public class CommentService {
 	 * {@code VALIDATION_FAILED}; accepted leading/trailing whitespace is
 	 * preserved. Commenting on an archived issue is not allowed and returns a
 	 * safe {@code 404 ISSUE_NOT_FOUND}.
+	 *
+	 * <p>Locking: the issue row is refreshed under a pessimistic write lock and
+	 * the archived flag is rechecked against the fresh committed view after any
+	 * wait. This serializes create against a concurrent archive/update on the
+	 * single issue-row lock; no other lock is taken afterwards, so no reverse
+	 * lock cycle is possible (see the class-level concurrency note).</p>
 	 */
 	@Transactional
 	public CommentResponse create(String issueKey, CreateCommentRequest request,
 			MessorUserPrincipal principal) {
 		Issue issue = loadIssue(issueKey, principal, ProjectPermission.COMMENT);
+		// Serialize against archive/update on the issue row, then recheck the
+		// archived flag against the fresh committed view after any wait.
+		entityManager.refresh(issue, LockModeType.PESSIMISTIC_WRITE);
 		if (issue.isArchived()) {
 			throw new ApiProblemException(HttpStatus.NOT_FOUND, "ISSUE_NOT_FOUND",
 					"İş bulunamadı.");

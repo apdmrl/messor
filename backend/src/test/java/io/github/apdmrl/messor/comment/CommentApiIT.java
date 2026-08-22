@@ -756,17 +756,32 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Delete negative", null, null);
 		String commentId = createComment(admin, issueKey, "negative");
 
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
+		MvcResult negative = mockMvc.perform(delete("/api/comments/{id}", commentId)
 				.cookie(admin.session())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "-1"))
 				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andReturn();
+		assertNoInternalDetail(negative);
 
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
+		// A missing expectedVersion is bound as absent (not a framework binding
+		// error) and rejected with the same exact RFC 9457 VALIDATION_FAILED code.
+		MvcResult missing = mockMvc.perform(delete("/api/comments/{id}", commentId)
 				.cookie(admin.session())
 				.header(admin.csrfHeader(), admin.csrfToken()))
-				.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest())
+				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
+				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+				.andReturn();
+		assertNoInternalDetail(missing);
+
+		// Zero is a valid version and the delete proceeds.
+		mockMvc.perform(delete("/api/comments/{id}", commentId)
+				.cookie(admin.session())
+				.header(admin.csrfHeader(), admin.csrfToken())
+				.queryParam("expectedVersion", "0"))
+				.andExpect(status().isOk());
 	}
 
 	// --------------------------------------------------------------- helpers

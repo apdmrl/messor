@@ -7,8 +7,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -16,6 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import javax.sql.DataSource;
 
 import io.github.apdmrl.messor.identity.UserAccount;
 import io.github.apdmrl.messor.identity.UserAccountRepository;
@@ -54,6 +61,9 @@ class CommentConcurrencyIT extends PostgresIntegrationTestSupport {
 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
+
+	@Autowired
+	private DataSource dataSource;
 
 	@BeforeEach
 	void clean() {
@@ -116,7 +126,265 @@ class CommentConcurrencyIT extends PostgresIntegrationTestSupport {
 		}
 	}
 
+	/**
+	 * Comment create must never succeed on an issue that a concurrent archive
+	 * archives first. The issue row is locked with {@code SELECT ... FOR UPDATE}
+	 * in a separate JDBC transaction; the archive is launched and proven queued
+	 * on that row lock, then the comment create is launched and proven queued
+	 * behind it. Releasing the lock lets the archive (first in the FIFO queue)
+	 * win: it commits the archive, and the create refreshes the archived flag and
+	 * returns the safe {@code 404 ISSUE_NOT_FOUND}. No comment row is created.
+	 *
+	 * <p>Determinism uses PostgreSQL blocked-session observation
+	 * ({@link #awaitBlockedSessions}) with a single bounded absolute deadline; no
+	 * blind sleep forces the race.</p>
+	 */
+	@Test
+	void concurrentArchiveWinsBeforeCommentCreateRejectsSafeNotFound() throws Exception {
+		LoginSession admin = login("cc-arch-create-admin@example.com", UserRole.ORG_ADMIN);
+		String key = createProject(admin, "CCCA1", "Archive/create race");
+		LoginSession memberA = login("cc-arch-create-a@example.com", UserRole.USER);
+		addMember(key, memberA.userId(), "MEMBER");
+		LoginSession memberB = login("cc-arch-create-b@example.com", UserRole.USER);
+		addMember(key, memberB.userId(), "MEMBER");
+		String issueKey = createIssue(admin, key);
+
+		try (Connection lockConn = dataSource.getConnection()) {
+			lockConn.setAutoCommit(false);
+			long lockPid = lockIssueRow(lockConn, issueKey);
+
+			ExecutorService executor = Executors.newFixedThreadPool(2);
+			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DEADLOCK_TIMEOUT_SECONDS);
+			try {
+				// Launch the archive first and prove it is queued on the row lock.
+				CountDownLatch startGate = new CountDownLatch(1);
+				Future<MvcResult> archiveFuture = executor.submit(() -> {
+					awaitGate(startGate, deadline);
+					return performArchive(issueKey, memberA, 0L);
+				});
+				startGate.countDown();
+				awaitBlockedSessions(lockPid, 1, deadline);
+
+				// Launch the comment create second and prove it queues behind.
+				Future<MvcResult> createFuture = executor.submit(() ->
+						performCreateComment(issueKey, memberB, "late comment"));
+				awaitBlockedSessions(lockPid, 2, deadline);
+
+				// Release the held row lock; the archive is first in the FIFO queue.
+				lockConn.rollback();
+
+				MvcResult archiveResult = archiveFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+				MvcResult createResult = createFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+
+				// Archive wins: 200 with archived=true.
+				assertThat(archiveResult.getResponse().getStatus()).isEqualTo(200);
+				JsonNode archiveBody = objectMapper.readTree(
+						archiveResult.getResponse().getContentAsString());
+				assertThat(archiveBody.get("archived").asBoolean()).isTrue();
+
+				// The serialized create is rejected as a safe 404 ISSUE_NOT_FOUND.
+				assertThat(createResult.getResponse().getStatus()).isEqualTo(404);
+				JsonNode createBody = objectMapper.readTree(
+						createResult.getResponse().getContentAsString());
+				assertThat(createBody.get("code").asText()).isEqualTo("ISSUE_NOT_FOUND");
+
+				// No comment row was ever created for the issue.
+				Integer commentCount = jdbcTemplate.queryForObject("""
+						SELECT COUNT(*) FROM issue_comment WHERE issue_id =
+							(SELECT id FROM issue WHERE human_key = ?)
+						""", Integer.class, issueKey);
+				assertThat(commentCount).isEqualTo(0);
+
+				// Issue is archived with version incremented once.
+				Map<String, Object> row = jdbcTemplate.queryForMap(
+						"SELECT version, archived FROM issue WHERE human_key = ?", issueKey);
+				assertThat(row.get("archived")).isEqualTo(true);
+				assertThat(row.get("version")).isEqualTo(1L);
+			}
+			finally {
+				shutdownExecutor(executor, deadline);
+			}
+		}
+	}
+
+	/**
+	 * The reverse linearization is also valid: if the comment create locks the
+	 * issue row before the archive, the create may linearize first and succeed
+	 * ({@code 201}), and only then does the archive proceed to archive the issue.
+	 * This proves the lock serialization is fair and order-dependent rather than
+	 * always rejecting the create.
+	 */
+	@Test
+	void concurrentCommentCreateLockingFirstLinearizesBeforeArchive() throws Exception {
+		LoginSession admin = login("cc-create-arch-admin@example.com", UserRole.ORG_ADMIN);
+		String key = createProject(admin, "CCCA2", "Create/archive race");
+		LoginSession memberA = login("cc-create-arch-a@example.com", UserRole.USER);
+		addMember(key, memberA.userId(), "MEMBER");
+		LoginSession memberB = login("cc-create-arch-b@example.com", UserRole.USER);
+		addMember(key, memberB.userId(), "MEMBER");
+		String issueKey = createIssue(admin, key);
+
+		try (Connection lockConn = dataSource.getConnection()) {
+			lockConn.setAutoCommit(false);
+			long lockPid = lockIssueRow(lockConn, issueKey);
+
+			ExecutorService executor = Executors.newFixedThreadPool(2);
+			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DEADLOCK_TIMEOUT_SECONDS);
+			try {
+				// Launch the comment create first and prove it is queued on the lock.
+				CountDownLatch startGate = new CountDownLatch(1);
+				Future<MvcResult> createFuture = executor.submit(() -> {
+					awaitGate(startGate, deadline);
+					return performCreateComment(issueKey, memberA, "first comment");
+				});
+				startGate.countDown();
+				awaitBlockedSessions(lockPid, 1, deadline);
+
+				// Launch the archive second and prove it queues behind the create.
+				Future<MvcResult> archiveFuture = executor.submit(() ->
+						performArchive(issueKey, memberB, 0L));
+				awaitBlockedSessions(lockPid, 2, deadline);
+
+				lockConn.rollback();
+
+				MvcResult createResult = createFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+				MvcResult archiveResult = archiveFuture.get(remaining(deadline),
+						TimeUnit.NANOSECONDS);
+
+				// The create won the row lock first and linearized before the archive.
+				assertThat(createResult.getResponse().getStatus()).isEqualTo(201);
+				JsonNode created = objectMapper.readTree(
+						createResult.getResponse().getContentAsString());
+				assertThat(created.get("body").asText()).isEqualTo("first comment");
+
+				// The archive then proceeds and archives the issue.
+				assertThat(archiveResult.getResponse().getStatus()).isEqualTo(200);
+				JsonNode archiveBody = objectMapper.readTree(
+						archiveResult.getResponse().getContentAsString());
+				assertThat(archiveBody.get("archived").asBoolean()).isTrue();
+
+				// Exactly one comment row exists for the issue.
+				Integer commentCount = jdbcTemplate.queryForObject("""
+						SELECT COUNT(*) FROM issue_comment WHERE issue_id =
+							(SELECT id FROM issue WHERE human_key = ?)
+						""", Integer.class, issueKey);
+				assertThat(commentCount).isEqualTo(1);
+			}
+			finally {
+				shutdownExecutor(executor, deadline);
+			}
+		}
+	}
+
 	// -------------------------------------------------------------- harness
+
+	private void awaitGate(CountDownLatch startGate, long deadline)
+			throws InterruptedException {
+		long rem = deadline - System.nanoTime();
+		if (rem <= 0) {
+			throw new AssertionError("start gate deadline elapsed before release");
+		}
+		if (!startGate.await(rem, TimeUnit.NANOSECONDS)) {
+			throw new AssertionError("start gate was not released within the shared deadline");
+		}
+	}
+
+	private long remaining(long deadline) {
+		long rem = deadline - System.nanoTime();
+		if (rem <= 0) {
+			throw new AssertionError("deadline elapsed before future completed");
+		}
+		return rem;
+	}
+
+	private void shutdownExecutor(ExecutorService executor, long deadline) {
+		executor.shutdownNow();
+		long cleanupBudget = TimeUnit.SECONDS.toNanos(5);
+		try {
+			executor.awaitTermination(cleanupBudget, TimeUnit.NANOSECONDS);
+		}
+		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
+	}
+
+	private MvcResult performArchive(String issueKey, LoginSession session, long expectedVersion)
+			throws Exception {
+		return mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
+				.cookie(session.session())
+				.contentType(MediaType.APPLICATION_JSON)
+				.header(session.csrfHeader(), session.csrfToken())
+				.content("""
+						{"expectedVersion":%d}
+						""".formatted(expectedVersion)))
+				.andReturn();
+	}
+
+	private MvcResult performCreateComment(String issueKey, LoginSession session, String body)
+			throws Exception {
+		return mockMvc.perform(post("/api/issues/{issueKey}/comments", issueKey)
+				.cookie(session.session())
+				.contentType(MediaType.APPLICATION_JSON)
+				.header(session.csrfHeader(), session.csrfToken())
+				.content("""
+						{"body":"%s"}
+						""".formatted(body)))
+				.andReturn();
+	}
+
+	/**
+	 * Acquires {@code SELECT ... FOR UPDATE} on the target issue row in a separate
+	 * JDBC transaction and returns the backend PID of that connection, so both
+	 * concurrent requests deterministically block on the row lock.
+	 */
+	private long lockIssueRow(Connection conn, String issueKey) throws Exception {
+		try (PreparedStatement ps = conn.prepareStatement(
+				"SELECT id FROM issue WHERE human_key = ? FOR UPDATE")) {
+			ps.setString(1, issueKey);
+			try (ResultSet rs = ps.executeQuery()) {
+				assertThat(rs.next()).isTrue();
+			}
+		}
+		try (Statement st = conn.createStatement();
+				ResultSet rs = st.executeQuery("SELECT pg_backend_pid()")) {
+			rs.next();
+			return rs.getLong(1);
+		}
+	}
+
+	/**
+	 * Condition-based bounded polling: waits until PostgreSQL reports at least
+	 * {@code expected} request sessions (other than the lock-holding connection)
+	 * blocked on a lock, using one absolute deadline. Proves the request sessions
+	 * reached the row-lock boundary before the lock is released. No blind sleep.
+	 */
+	private void awaitBlockedSessions(long lockPid, int expected, long deadline)
+			throws Exception {
+		while (System.nanoTime() < deadline) {
+			Integer count = jdbcTemplate.queryForObject(
+					"SELECT COUNT(*) FROM pg_stat_activity a"
+							+ " WHERE a.pid <> ? AND a.wait_event_type = 'Lock'"
+							+ " AND a.state = 'active'",
+					Integer.class, lockPid);
+			if (count != null && count >= expected) {
+				return;
+			}
+			Thread.sleep(20L);
+		}
+		throw new AssertionError("expected " + expected
+				+ " request session(s) blocked on the issue-row lock within the deadline");
+	}
+
+	private void addMember(String projectKey, UUID userId, String role) {
+		jdbcTemplate.update("""
+				INSERT INTO project_member (id, project_id, user_account_id, role)
+				SELECT gen_random_uuid(), p.id, ?, ?
+				FROM project p WHERE p.key = ?
+				""", userId, role, projectKey);
+	}
 
 	private List<Integer> runConcurrently(Callable<Integer>... operations)
 			throws Exception {

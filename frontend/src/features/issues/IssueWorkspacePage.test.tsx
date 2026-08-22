@@ -137,6 +137,17 @@ vi.mock('../projects/projectsApi', async (importOriginal) => {
   }
 })
 
+vi.mock('../comments/commentsApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../comments/commentsApi')>()
+  return {
+    ...actual,
+    listIssueComments: vi.fn(),
+    createComment: vi.fn(),
+    updateComment: vi.fn(),
+    deleteComment: vi.fn(),
+  }
+})
+
 import {
   listIssues,
   getIssue,
@@ -147,6 +158,7 @@ import {
   listIssueActivity,
 } from './issuesApi'
 import { getProject, listProjectMembers } from '../projects/projectsApi'
+import { listIssueComments, createComment } from '../comments/commentsApi'
 
 const listIssuesMock = listIssues as Mock
 const getIssueMock = getIssue as Mock
@@ -157,8 +169,10 @@ const moveIssueMock = moveIssue as Mock
 const listIssueActivityMock = listIssueActivity as Mock
 const getProjectMock = getProject as Mock
 const listProjectMembersMock = listProjectMembers as Mock
+const listIssueCommentsMock = listIssueComments as Mock
+const createCommentMock = createComment as Mock
 
-function renderWorkspace(): QueryClient {
+function renderWorkspace(initialEntry = '/projects/MES/board'): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -182,7 +196,7 @@ function renderWorkspace(): QueryClient {
   render(
     <QueryClientProvider client={queryClient}>
       <SessionContext.Provider value={sessionValue}>
-        <MemoryRouter initialEntries={['/projects/MES/board']}>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
             <Route
               path="/projects/:projectKey/board"
@@ -217,6 +231,9 @@ describe('IssueWorkspacePage', () => {
     archiveIssueMock.mockReset()
     moveIssueMock.mockReset()
     listIssueActivityMock.mockReset()
+    listIssueCommentsMock.mockReset()
+    listIssueCommentsMock.mockResolvedValue([])
+    createCommentMock.mockReset()
   })
 
   afterEach(() => {
@@ -2674,4 +2691,94 @@ describe('IssueWorkspacePage', () => {
       ).not.toBeInTheDocument()
     })
   })
+
+  describe('cross-project route data isolation and drawer busy lifecycle', () => {
+    it('does not fetch activity or comments when the issue belongs to another project', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(makeIssue({ projectKey: 'OTHER' }))
+      renderWorkspace('/projects/MES/issues/MES-1')
+
+      await waitFor(() => {
+        expect(getIssueMock).toHaveBeenCalledWith('MES-1')
+      })
+      // The detail projectKey does not match the route project key, so the
+      // activity API must never fire and no drawer (hence no comments API call)
+      // may render or cache the wrong-project data.
+      expect(listIssueActivityMock).not.toHaveBeenCalled()
+      expect(listIssueCommentsMock).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('does not fetch activity until the detail matches the route project', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      listIssueActivityMock.mockResolvedValue(activity)
+      // The detail stays loading (never resolves), so activity must not fire.
+      getIssueMock.mockImplementation(() => new Promise(() => {}))
+      renderWorkspace('/projects/MES/issues/MES-1')
+
+      await waitFor(() => {
+        expect(listIssueActivityMock).not.toHaveBeenCalled()
+      })
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('blocks Escape, close and backdrop while a comment create is pending', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      getIssueMock.mockResolvedValue(issue1)
+      listIssueActivityMock.mockResolvedValue(activity)
+      let resolveCreate: (value: unknown) => void = () => {}
+      createCommentMock.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveCreate = resolve
+          }),
+      )
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await selectIssue('MES-1')
+      await screen.findByRole('heading', { name: 'MES-1', level: 2 })
+      await user.click(screen.getByRole('tab', { name: 'Yorumlar' }))
+      await user.type(screen.getByLabelText('Yorum ekle'), 'a comment')
+      await user.click(screen.getByRole('button', { name: 'Yorum yap' }))
+      await waitFor(() => {
+        expect(createCommentMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Busy: the close button is disabled and Escape/backdrop cannot close.
+      const close = screen.getByRole('button', { name: /kapat/i })
+      expect(close).toBeDisabled()
+      await user.keyboard('{Escape}')
+      await user.click(
+        document.querySelector('.issue-drawer__backdrop') as Element,
+      )
+      expect(
+        screen.queryByRole('heading', { name: 'MES-1', level: 2 }),
+      ).toBeInTheDocument()
+
+      resolveCreate(makeCommentForWorkspace())
+      await waitFor(() => {
+        expect(createCommentMock).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
 })
+
+function makeCommentForWorkspace() {
+  return {
+    id: 'c-1',
+    issueKey: 'MES-1',
+    authorId: adminMember.userId,
+    body: 'a comment',
+    deleted: false,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+    version: 0,
+  }
+}

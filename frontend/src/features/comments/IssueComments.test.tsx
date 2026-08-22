@@ -74,6 +74,7 @@ interface RenderOptions {
   canComment?: boolean
   isModerator?: boolean
   enabled?: boolean
+  onBusyChange?: (busy: boolean) => void
 }
 
 function renderComments(options: RenderOptions = {}): QueryClient {
@@ -89,6 +90,7 @@ function renderComments(options: RenderOptions = {}): QueryClient {
         isModerator={options.isModerator ?? true}
         members={members}
         enabled={options.enabled ?? true}
+        onBusyChange={options.onBusyChange}
       />
     </QueryClientProvider>,
   )
@@ -379,5 +381,59 @@ describe('IssueComments', () => {
     await waitFor(() => {
       expect(screen.queryByLabelText('Yorumu düzenle')).not.toBeInTheDocument()
     })
+  })
+
+  it('reports busy through an effect without a render-phase parent update warning', async () => {
+    const onBusyChange = vi.fn()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    listIssueCommentsMock.mockResolvedValue([])
+    let resolveCreate: (c: IssueComment) => void = () => {}
+    createCommentMock.mockImplementation(
+      () =>
+        new Promise<IssueComment>((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+    renderComments({ onBusyChange })
+    await screen.findByText('Henüz yorum yok.')
+
+    await userEvent.type(screen.getByLabelText('Yorum ekle'), 'a comment')
+    await userEvent.click(screen.getByRole('button', { name: 'Yorum yap' }))
+
+    await waitFor(() => {
+      expect(onBusyChange).toHaveBeenCalledWith(true)
+    })
+    // No "Cannot update a component while rendering a different component".
+    expect(consoleError).not.toHaveBeenCalledWith(
+      expect.stringContaining('Cannot update a component while rendering'),
+    )
+
+    resolveCreate(makeComment({ body: 'a comment' }))
+    await waitFor(() => {
+      expect(onBusyChange).toHaveBeenCalledWith(false)
+    })
+    consoleError.mockRestore()
+  })
+
+  it('reports false via effect cleanup when the component unmounts', () => {
+    const onBusyChange = vi.fn()
+    listIssueCommentsMock.mockResolvedValue([])
+    const { unmount } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <IssueComments
+          issueKey="MES-1"
+          currentUserId={adminId}
+          canComment
+          isModerator
+          members={members}
+          enabled
+          onBusyChange={onBusyChange}
+        />
+      </QueryClientProvider>,
+    )
+    unmount()
+    // The effect cleanup must notify the parent that the busy state is gone, so a
+    // route/history unmount never leaves the parent drawer stuck busy.
+    expect(onBusyChange).toHaveBeenCalledWith(false)
   })
 })

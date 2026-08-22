@@ -192,10 +192,15 @@ export function IssueWorkspacePage(): ReactElement {
     enabled: routeIssueKey !== null,
   })
 
+  // The activity query only fires once the issue detail has loaded AND its
+  // project matches the route project key. This prevents a cross-project URL
+  // like /projects/A/issues/B-1 from calling the activity API for an issue that
+  // does not belong to project A, and from caching that wrong-project data.
   const activityQuery = useQuery({
     queryKey: ['issue', routeIssueKey ?? '', 'activity'],
     queryFn: () => listIssueActivity(routeIssueKey as string),
-    enabled: routeIssueKey !== null,
+    enabled:
+      routeIssueKey !== null && issueQuery.data?.projectKey === key,
   })
 
   const canMutate =

@@ -25,7 +25,11 @@ interface IssueDrawerProps {
   statusLabel: (code: string) => string
   statusCodes: ReadonlySet<string>
   assigneeLabel: (id: string | null) => string
-  /** Blocks Escape-close while a comment mutation/confirmation is pending. */
+  /**
+   * Blocks every close path (Escape, close button, backdrop) while a comment
+   * mutation/confirmation or archive confirmation is pending, so an in-flight
+   * write or an open confirmation is never discarded by an accidental close.
+   */
   escapeBlocked: boolean
   onBusyChange: (busy: boolean) => void
   onClose: () => void
@@ -121,6 +125,18 @@ export function IssueDrawer({
     [escapeBlocked, onClose, trapFocus],
   )
 
+  const handleBackdropClose = useCallback((): void => {
+    if (!escapeBlocked) {
+      onClose()
+    }
+  }, [escapeBlocked, onClose])
+
+  const handleCloseButton = useCallback((): void => {
+    if (!escapeBlocked) {
+      onClose()
+    }
+  }, [escapeBlocked, onClose])
+
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
@@ -158,7 +174,11 @@ export function IssueDrawer({
       aria-modal="true"
       aria-labelledby="issue-drawer-heading"
     >
-      <div className="issue-drawer__backdrop" onClick={onClose} aria-hidden="true" />
+      <div
+        className="issue-drawer__backdrop"
+        onClick={handleBackdropClose}
+        aria-hidden="true"
+      />
 
       <div className="issue-drawer__panel">
         <header className="issue-drawer__header">
@@ -177,7 +197,9 @@ export function IssueDrawer({
             ref={closeButtonRef}
             className="issue-drawer__close"
             aria-label="İş kapanış panelini kapat"
-            onClick={onClose}
+            onClick={handleCloseButton}
+            disabled={escapeBlocked}
+            aria-disabled={escapeBlocked}
           >
             Kapat
           </button>

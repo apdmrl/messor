@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiError } from '../../app/apiClient'
 import type { ProjectMember } from '../projects/types'
 import {
@@ -192,11 +192,18 @@ export function IssueComments({
     deleteMutation.isPending
 
   const busy = anyCommentPending || confirmingDeleteId !== null
-  const prevBusyRef = useRef(false)
-  if (onBusyChange !== undefined && busy !== prevBusyRef.current) {
-    prevBusyRef.current = busy
-    onBusyChange(busy)
-  }
+
+  // Report busy to a parent drawer via an effect, never during render (a render
+  // phase call to the parent's setState would trigger the React "Cannot update a
+  // component while rendering a different component" warning). The cleanup
+  // reports false so an unmount (route/history navigation, drawer close) always
+  // resets the parent's busy state.
+  useEffect(() => {
+    onBusyChange?.(busy)
+    return () => {
+      onBusyChange?.(false)
+    }
+  }, [busy, onBusyChange])
 
   const handleCreateSubmit = (): void => {
     if (mutationLocked()) {

@@ -54,7 +54,11 @@ public class CommentController {
 	public ResponseEntity<CommentResponse> delete(
 			@AuthenticationPrincipal MessorUserPrincipal principal,
 			@PathVariable UUID commentId,
-			@RequestParam(value = "expectedVersion") Long expectedVersion) {
+			@RequestParam(value = "expectedVersion", required = false) Long expectedVersion) {
+		// Validate the version at the binding/controller boundary so a missing or
+		// negative value is a well-formed RFC 9457 problem+json VALIDATION_FAILED,
+		// never a framework binding error or a leaked exception detail. A value of
+		// zero is valid (the initial comment version).
 		if (expectedVersion == null || expectedVersion < 0) {
 			throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED",
 					"İstek doğrulama kurallarını karşılamıyor.");
