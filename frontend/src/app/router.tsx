@@ -1,9 +1,10 @@
 /* oxlint-disable react/only-export-components -- router.tsx exports a non-component router alongside internal route-guard components. */
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import type { ReactElement } from 'react'
+import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
+import { IssueWorkspacePage } from '../features/issues/IssueWorkspacePage'
 import { MyWorkPlaceholder } from '../features/my-work/MyWorkPlaceholder'
-import { ProjectBoardPlaceholder } from '../features/projects/ProjectBoardPlaceholder'
 import { ProjectSettingsPage } from '../features/projects/ProjectSettingsPage'
 import { ProjectsPage } from '../features/projects/ProjectsPage'
 import { AuthenticatedShell } from './AuthenticatedShell'
@@ -49,7 +50,7 @@ function RootRedirect(): ReactElement {
   return <Navigate to="/login" replace />
 }
 
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     path: '/login',
     element: <LoginRoute />,
@@ -71,7 +72,7 @@ export const router = createBrowserRouter([
       },
       {
         path: '/projects/:projectKey/board',
-        element: <ProjectBoardPlaceholder />,
+        element: <IssueWorkspacePage />,
       },
       {
         path: '/projects/:projectKey/settings',
@@ -83,4 +84,6 @@ export const router = createBrowserRouter([
       },
     ],
   },
-])
+]
+
+export const router = createBrowserRouter(routes)
