@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useDroppable } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { WorkflowStatus } from '../projects/types'
 import { IssueCard } from './IssueCard'
 import type { Issue } from './types'
@@ -53,27 +54,32 @@ export function KanbanColumn({
       {issues.length === 0 ? (
         <p className="kanban-column__empty">Kart yok</p>
       ) : (
-        <ul className="kanban-column__cards">
-          {issues.map((issue, cardIndex) => (
-            <IssueCard
-              key={issue.issueKey}
-              issue={issue}
-              statusLabel={statusLabel}
-              assigneeLabel={assigneeLabel}
-              selected={issue.issueKey === selectedIssueKey}
-              selectionDisabled={selectionDisabled}
-              canMove={canMove}
-              moveDisabled={moveDisabled}
-              workflowStatuses={workflowStatuses}
-              columnIndex={columnIndex}
-              cardIndex={cardIndex}
-              columnIssueCount={issues.length}
-              totalColumns={totalColumns}
-              onSelect={onSelect}
-              onMove={onMove}
-            />
-          ))}
-        </ul>
+        <SortableContext
+          items={issues.map((issue) => issue.issueKey)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="kanban-column__cards">
+            {issues.map((issue, cardIndex) => (
+              <IssueCard
+                key={issue.issueKey}
+                issue={issue}
+                statusLabel={statusLabel}
+                assigneeLabel={assigneeLabel}
+                selected={issue.issueKey === selectedIssueKey}
+                selectionDisabled={selectionDisabled}
+                canMove={canMove}
+                moveDisabled={moveDisabled}
+                workflowStatuses={workflowStatuses}
+                columnIndex={columnIndex}
+                cardIndex={cardIndex}
+                columnIssueCount={issues.length}
+                totalColumns={totalColumns}
+                onSelect={onSelect}
+                onMove={onMove}
+              />
+            ))}
+          </ul>
+        </SortableContext>
       )}
     </section>
   )

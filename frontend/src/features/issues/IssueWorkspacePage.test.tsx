@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -2205,6 +2205,248 @@ describe('IssueWorkspacePage', () => {
       expect(screen.queryByRole('button', { name: /taşı$/ })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Yeni issue' })).not.toBeInTheDocument()
       expect(moveIssueMock).not.toHaveBeenCalled()
+    })
+
+    describe('synchronous mutation lock', () => {
+      async function openCreateFormAndMoveMenu(): Promise<void> {
+        fireEvent.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+        fireEvent.change(screen.getByLabelText('Başlık'), {
+          target: { value: 'Third task' },
+        })
+        fireEvent.click(
+          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+        )
+      }
+
+      async function openEditFormAndMoveMenu(): Promise<void> {
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
+        await screen.findByRole('button', { name: 'Düzenle' })
+        fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+        fireEvent.change(screen.getByLabelText('Başlık'), {
+          target: { value: 'Renamed' },
+        })
+        fireEvent.click(
+          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+        )
+      }
+
+      async function openArchiveConfirmationAndMoveMenu(): Promise<void> {
+        await screen.findByText('First task')
+        fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
+        await screen.findByRole('button', { name: 'Arşivle' })
+        fireEvent.click(screen.getByRole('button', { name: 'Arşivle' }))
+        fireEvent.click(
+          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+        )
+      }
+
+      function seedWorkspace(): void {
+        getProjectMock.mockResolvedValue(projectDetail)
+        listProjectMembersMock.mockResolvedValue(members)
+        listIssuesMock.mockResolvedValue(pageWithIssues)
+        getIssueMock.mockResolvedValue(issue1)
+        listIssueActivityMock.mockResolvedValue(activity)
+      }
+
+      it('blocks a move issued in the same tick as a create (exactly one API call)', async () => {
+        let resolveCreate: (value: Issue) => void = () => {}
+        createIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveCreate = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openCreateFormAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Oluştur' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        })
+        await waitFor(() => expect(createIssueMock).toHaveBeenCalledTimes(1))
+        expect(moveIssueMock).not.toHaveBeenCalled()
+        // the active create form is not replaced by a blocked move
+        expect(screen.getByRole('button', { name: 'Oluşturuluyor…' })).toBeInTheDocument()
+        resolveCreate(makeIssue({ issueKey: 'MES-3', number: 3, title: 'Third task' }))
+      })
+
+      it('blocks create issued in the same tick as a move (exactly one API call)', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openCreateFormAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Oluştur' }))
+        })
+
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(createIssueMock).not.toHaveBeenCalled()
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+      })
+
+      it('blocks a move issued in the same tick as an update (exactly one API call)', async () => {
+        let resolveUpdate: (value: Issue) => void = () => {}
+        updateIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveUpdate = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openEditFormAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        })
+
+        await waitFor(() => expect(updateIssueMock).toHaveBeenCalledTimes(1))
+        expect(moveIssueMock).not.toHaveBeenCalled()
+        resolveUpdate({ ...issue1, title: 'Renamed', version: 1 })
+      })
+
+      it('blocks an update issued in the same tick as a move (exactly one API call)', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openEditFormAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
+        })
+
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(updateIssueMock).not.toHaveBeenCalled()
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+      })
+
+      it('blocks a move issued in the same tick as an archive (exactly one API call)', async () => {
+        let resolveArchive: (value: Issue) => void = () => {}
+        archiveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveArchive = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openArchiveConfirmationAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Arşivlemeyi onayla' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        })
+
+        await waitFor(() => expect(archiveIssueMock).toHaveBeenCalledTimes(1))
+        expect(moveIssueMock).not.toHaveBeenCalled()
+        // the archive confirmation is not dismissed by a blocked move
+        expect(
+          screen.getByRole('button', { name: 'Arşivlemeyi onayla' }),
+        ).toBeInTheDocument()
+        resolveArchive(makeIssue({ archived: true, version: 1 }))
+      })
+
+      it('blocks an archive issued in the same tick as a move (exactly one API call)', async () => {
+        let resolveMove: (value: Issue) => void = () => {}
+        moveIssueMock.mockImplementation(
+          () =>
+            new Promise<Issue>((resolve) => {
+              resolveMove = resolve
+            }),
+        )
+        seedWorkspace()
+        renderWorkspace()
+        await openArchiveConfirmationAndMoveMenu()
+
+        act(() => {
+          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Arşivlemeyi onayla' }))
+        })
+
+        await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(archiveIssueMock).not.toHaveBeenCalled()
+        resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+      })
+
+      it('releases the lock after a successful mutation so a later one can start', async () => {
+        seedWorkspace()
+        moveIssueMock.mockResolvedValue({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+        const user = userEvent.setup()
+        renderWorkspace()
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        await screen.findByText('MES-1 taşındı.')
+
+        // lock is released: a create can now proceed
+        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.type(screen.getByLabelText('Başlık'), 'Third task')
+        createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
+        await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+        await waitFor(() => {
+          expect(createIssueMock).toHaveBeenCalled()
+        })
+      })
+
+      it('releases the lock after a rejected mutation so a later one can start', async () => {
+        seedWorkspace()
+        moveIssueMock.mockRejectedValue(
+          new ApiError(500, 'INTERNAL', 'backend move secret'),
+        )
+        const user = userEvent.setup()
+        renderWorkspace()
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        await screen.findByRole('alert')
+
+        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.type(screen.getByLabelText('Başlık'), 'Third task')
+        createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
+        await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+        await waitFor(() => {
+          expect(createIssueMock).toHaveBeenCalled()
+        })
+      })
+
+      it('releases the lock when a move onMutate rejects so no permanent lock remains', async () => {
+        seedWorkspace()
+        moveIssueMock.mockResolvedValue({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
+        const queryClient = renderWorkspace()
+        vi.spyOn(queryClient, 'cancelQueries').mockRejectedValue(new Error('boom'))
+        const user = userEvent.setup()
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        // onMutate throws before the mutation function runs; the move never
+        // reaches the API, and the lock must still be released.
+        await waitFor(() => {
+          expect(moveIssueMock).not.toHaveBeenCalled()
+        })
+
+        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.type(screen.getByLabelText('Başlık'), 'Third task')
+        createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
+        await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+        await waitFor(() => {
+          expect(createIssueMock).toHaveBeenCalled()
+        })
+      })
     })
 
     it('applies a completed move only to the moved issue, keeping selection stable', async () => {

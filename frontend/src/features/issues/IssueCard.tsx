@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { WorkflowStatus } from '../projects/types'
@@ -61,6 +61,7 @@ export function IssueCard({
   onMove,
 }: IssueCardProps): ReactElement {
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuToggleRef = useRef<HTMLButtonElement>(null)
   const reducedMotion = usePrefersReducedMotion()
   // The sortable listeners/attributes live on a dedicated drag handle so dnd-kit
   // never swallows keyboard activation of the descendant select/menu buttons.
@@ -92,6 +93,9 @@ export function IssueCard({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setMenuOpen(false)
+        // Return focus to the toggle rather than leaving it on the now-unmounted
+        // menu action.
+        menuToggleRef.current?.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -142,6 +146,7 @@ export function IssueCard({
         <div className="kanban-card__menu">
           <button
             type="button"
+            ref={menuToggleRef}
             className="kanban-card__menu-toggle"
             aria-label={`${issue.issueKey} için taşıma menüsü`}
             aria-expanded={menuOpen}

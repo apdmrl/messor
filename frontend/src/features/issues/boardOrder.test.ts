@@ -5,6 +5,9 @@ import {
   buildColumns,
   columnIssues,
   computeMove,
+  normalizeWorkflowStatuses,
+  resolveDragEnd,
+  resolveDropIndex,
 } from './boardOrder'
 
 function makeIssue(overrides: Partial<Issue> = {}): Issue {
@@ -284,6 +287,120 @@ describe('computeMove', () => {
       targetIndex: 0,
     })
     expect(result.kind).toBe('invalid')
+  })
+})
+
+describe('normalizeWorkflowStatuses', () => {
+  it('sorts by position then by code as a deterministic tie-break', () => {
+    const result = normalizeWorkflowStatuses([
+      { code: 'DONE', displayName: 'Bitti', position: 2 },
+      { code: 'TO_DO', displayName: 'Yapılacak', position: 0 },
+      { code: 'IN_PROGRESS', displayName: 'Sürüyor', position: 1 },
+    ])
+    expect(result.map((s) => s.code)).toEqual(['TO_DO', 'IN_PROGRESS', 'DONE'])
+  })
+
+  it('returns a new immutable array and never mutates the input', () => {
+    const input = [
+      { code: 'DONE', displayName: 'Bitti', position: 2 },
+      { code: 'TO_DO', displayName: 'Yapılacak', position: 0 },
+      { code: 'IN_PROGRESS', displayName: 'Sürüyor', position: 1 },
+    ]
+    const snapshot = input.map((s) => s.code)
+    const result = normalizeWorkflowStatuses(input)
+    expect(result).not.toBe(input)
+    expect(input.map((s) => s.code)).toEqual(snapshot)
+  })
+})
+
+describe('resolveDropIndex', () => {
+  it('moves the first card over the last card downward (becomes last)', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-1', overKey: 'MES-3' })
+    expect(index).toBe(2)
+  })
+
+  it('moves the last card over the first card upward (becomes first)', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-3', overKey: 'MES-1' })
+    expect(index).toBe(0)
+  })
+
+  it('moves a middle card downward', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-2', overKey: 'MES-3' })
+    expect(index).toBe(2)
+  })
+
+  it('moves a middle card upward', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-2', overKey: 'MES-1' })
+    expect(index).toBe(0)
+  })
+
+  it('handles adjacent down (first over second)', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-1', overKey: 'MES-2' })
+    expect(index).toBe(1)
+  })
+
+  it('handles adjacent up (second over first)', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-2', overKey: 'MES-1' })
+    expect(index).toBe(0)
+  })
+
+  it('returns null for a drop on itself', () => {
+    const issues = [a, b, c]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-1', overKey: 'MES-1' })
+    expect(index).toBeNull()
+  })
+
+  it('inserts before the over card for a cross-column drop', () => {
+    const issues = [a, b, c, d]
+    const index = resolveDropIndex({ issues, draggedKey: 'MES-1', overKey: 'MES-4' })
+    expect(index).toBe(0)
+  })
+})
+
+describe('resolveDragEnd', () => {
+  it('first card dragged over last resolves to append after the last card', () => {
+    const issues = [a, b, c]
+    const result = resolveDragEnd({ issues, activeId: 'MES-1', overId: 'MES-3' })
+    expect(result).toEqual({ targetStatusCode: 'TO_DO', targetIndex: 2 })
+  })
+
+  it('last card dragged over first resolves to the first position', () => {
+    const issues = [a, b, c]
+    const result = resolveDragEnd({ issues, activeId: 'MES-3', overId: 'MES-1' })
+    expect(result).toEqual({ targetStatusCode: 'TO_DO', targetIndex: 0 })
+  })
+
+  it('resolves a cross-column drop over a card to that column', () => {
+    const issues = [a, b, c, d]
+    const result = resolveDragEnd({ issues, activeId: 'MES-1', overId: 'MES-4' })
+    expect(result).toEqual({ targetStatusCode: 'IN_PROGRESS', targetIndex: 0 })
+  })
+
+  it('resolves an empty-column drop by appending with the column target', () => {
+    const issues = [a, b, c]
+    const result = resolveDragEnd({ issues, activeId: 'MES-1', overId: 'column-DONE' })
+    expect(result).toEqual({
+      targetStatusCode: 'DONE',
+      targetIndex: Number.MAX_SAFE_INTEGER,
+    })
+  })
+
+  it('returns null for a drop on itself so no API call is issued', () => {
+    const issues = [a, b, c]
+    const result = resolveDragEnd({ issues, activeId: 'MES-1', overId: 'MES-1' })
+    expect(result).toBeNull()
+  })
+
+  it('ignores an unknown over id (fails closed)', () => {
+    const issues = [a, b, c]
+    const result = resolveDragEnd({ issues, activeId: 'MES-1', overId: 'NOT_REAL' })
+    expect(result).toBeNull()
   })
 })
 

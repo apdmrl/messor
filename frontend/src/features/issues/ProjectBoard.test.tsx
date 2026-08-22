@@ -41,6 +41,13 @@ const inProgress = makeIssue({
   rank: 1024,
   title: 'Third',
 })
+const doneCard = makeIssue({
+  issueKey: 'MES-4',
+  number: 4,
+  statusCode: 'DONE',
+  rank: 1024,
+  title: 'Done',
+})
 
 const statusLabel = (code: string): string =>
   STATUSES.find((s) => s.code === code)?.displayName ?? code
@@ -210,6 +217,58 @@ describe('ProjectBoard', () => {
     })
   })
 
+  it('uses one normalized status order for columns and movement controls', async () => {
+    const unsorted: WorkflowStatus[] = [
+      { code: 'DONE', displayName: 'Bitti', position: 2 },
+      { code: 'TO_DO', displayName: 'Yapılacak', position: 0 },
+      { code: 'IN_PROGRESS', displayName: 'Sürüyor', position: 1 },
+    ]
+    const user = userEvent.setup()
+    const onMove = vi.fn()
+    render(
+      <ProjectBoard
+        workflowStatuses={unsorted}
+        issues={[toDoA, inProgress, doneCard]}
+        selectedIssueKey={null}
+        canMove
+        moveDisabled={false}
+        selectionDisabled={false}
+        statusLabel={statusLabel}
+        assigneeLabel={assigneeLabel}
+        onSelect={() => {}}
+        onMove={onMove}
+      />,
+    )
+
+    // Columns render in normalized position order TO_DO → IN_PROGRESS → DONE.
+    const columns = screen.getAllByRole('region', { name: /sütunu/ })
+    expect(columns.map((c) => c.getAttribute('aria-label'))).toEqual([
+      'Yapılacak sütunu, 1 kart',
+      'Sürüyor sütunu, 1 kart',
+      'Bitti sütunu, 1 kart',
+    ])
+
+    // "Sonraki sütuna taşı" from the first positioned column (TO_DO) targets
+    // IN_PROGRESS, not the raw-array neighbor.
+    await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+    await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+    expect(onMove).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
+
+    // Previous is impossible on the actual first positioned column (TO_DO).
+    await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+    expect(screen.getByRole('button', { name: 'Önceki sütuna taşı' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Sonraki sütuna taşı' })).toBeEnabled()
+    await user.keyboard('{Escape}')
+
+    // Next is impossible on the actual last positioned column (DONE), and its
+    // previous targets IN_PROGRESS.
+    await user.click(screen.getByRole('button', { name: 'MES-4 için taşıma menüsü' }))
+    expect(screen.getByRole('button', { name: 'Sonraki sütuna taşı' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Önceki sütuna taşı' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Önceki sütuna taşı' }))
+    expect(onMove).toHaveBeenCalledWith('MES-4', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
+  })
+
   it('selects a card via its keyboard-focusable button', async () => {
     const user = userEvent.setup()
     const { onSelect } = renderBoard()
@@ -241,6 +300,37 @@ describe('ProjectBoard', () => {
         screen.queryByRole('button', { name: 'Sonraki sütuna taşı' }),
       ).not.toBeInTheDocument()
       expect(onMove).not.toHaveBeenCalled()
+    })
+
+    it('returns focus to the menu toggle when the movement menu closes with Escape', async () => {
+      const user = userEvent.setup()
+      renderBoard()
+      const toggle = screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' })
+      await user.click(toggle)
+      const action = screen.getByRole('button', { name: 'Sonraki sütuna taşı' })
+      action.focus()
+      expect(action).toHaveFocus()
+      await user.keyboard('{Escape}')
+      expect(
+        screen.queryByRole('button', { name: 'Sonraki sütuna taşı' }),
+      ).not.toBeInTheDocument()
+      expect(toggle).toHaveFocus()
+    })
+
+    it('mounts controlled Turkish drag instructions and announcements, never raw status text', () => {
+      renderBoard()
+      const body = document.body.textContent ?? ''
+      // controlled Turkish screen-reader instructions are present
+      expect(body).toContain('Sürüklenebilir bir kartı seçmek için')
+      expect(body).toContain('boşluk tuşuna basın')
+      // a hostile status never leaks into the rendered instructions
+      const hostile = makeIssue({
+        issueKey: 'MES-9',
+        number: 9,
+        statusCode: '<script>pwn</script>',
+      })
+      renderBoard({ issues: [toDoA, hostile] })
+      expect(document.body.textContent ?? '').not.toContain('pwn')
     })
 
     it('removes drag transition animation under prefers-reduced-motion', () => {

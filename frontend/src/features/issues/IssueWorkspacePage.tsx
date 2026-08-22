@@ -83,20 +83,36 @@ export function IssueWorkspacePage(): ReactElement {
   const [focusIssueKey, setFocusIssueKey] = useState<string | null>(null)
 
   /**
-   * Synchronous shared mutation guard. Mirrors {@code anyMutationPending} but
-   * updates immediately so handler-level guards and the move onMutate recheck
-   * cannot be bypassed by stale closures or same-tick synthetic events.
+   * Synchronous ownership lock for every issue mutation. Updated immediately at
+   * the moment a mutation starts (never only via a post-render effect) so stale
+   * closures and same-tick synthetic events fail closed. The lock is the single
+   * authority deciding which mutation may be in flight; TanStack isPending only
+   * drives the disabled UI state.
    */
-  const mutationGuardRef = useRef(false)
-  /**
-   * Synchronous in-flight flag for the move mutation only. Set true the moment
-   * a move starts and cleared in onSettled so a second move cannot be started
-   * from a stale callback within the same tick, before React reflects isPending.
-   */
-  const moveInFlightRef = useRef(false)
-  useEffect(() => {
-    mutationGuardRef.current = anyMutationPending
-  })
+  type MutationKind = 'create' | 'update' | 'archive' | 'move'
+  const activeMutationRef = useRef<MutationKind | null>(null)
+
+  const tryAcquireMutation = useCallback((kind: MutationKind): boolean => {
+    const current = activeMutationRef.current
+    if (current === null) {
+      activeMutationRef.current = kind
+      return true
+    }
+    // A move's onMutate re-enters for the same move it already owns; it must
+    // accept itself rather than block.
+    if (current === kind && kind === 'move') {
+      return true
+    }
+    return false
+  }, [])
+
+  const releaseMutation = useCallback((kind: MutationKind): void => {
+    // Only the owning mutation may release; a stale completion never clears a
+    // different (newer) owner.
+    if (activeMutationRef.current === kind) {
+      activeMutationRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (focusIssueKey !== null) {
@@ -223,6 +239,9 @@ export function IssueWorkspacePage(): ReactElement {
     onError: (error: unknown) => {
       setFormError(safeErrorMessage(error))
     },
+    onSettled: () => {
+      releaseMutation('create')
+    },
   })
 
   const updateMutation = useMutation({
@@ -274,6 +293,9 @@ export function IssueWorkspacePage(): ReactElement {
         }
       }
       setFormError(safeErrorMessage(error))
+    },
+    onSettled: () => {
+      releaseMutation('update')
     },
   })
 
@@ -329,6 +351,9 @@ export function IssueWorkspacePage(): ReactElement {
       setBannerAlert({ kind: 'error', message: safeErrorMessage(error) })
       setFocusIntent('archive')
     },
+    onSettled: () => {
+      releaseMutation('archive')
+    },
   })
 
   const moveMutation = useMutation({
@@ -347,9 +372,10 @@ export function IssueWorkspacePage(): ReactElement {
         expectedVersion: vars.expectedVersion,
       }),
     onMutate: async (vars) => {
-      // Recheck the shared mutation guard; stale or synthetic triggers cannot
-      // bypass the invariant because the ref flips synchronously.
-      if (mutationGuardRef.current) {
+      // A move must already own the synchronous lock (acquired in handleMove
+      // before mutate). It accepts its own ownership and rejects anything else,
+      // so stale/synthetic triggers fail closed without blocking the same move.
+      if (activeMutationRef.current !== 'move') {
         throw new Error('blocked')
       }
       const listKey = ['issues', key, ISSUE_LIST_FILTERS]
@@ -432,7 +458,7 @@ export function IssueWorkspacePage(): ReactElement {
       setFocusIssueKey(vars.issueKey)
     },
     onSettled: (_data, _error, vars) => {
-      moveInFlightRef.current = false
+      releaseMutation('move')
       void Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['issues', key, ISSUE_LIST_FILTERS],
@@ -545,6 +571,9 @@ export function IssueWorkspacePage(): ReactElement {
     if (anyMutationPending) {
       return
     }
+    if (!tryAcquireMutation('create')) {
+      return
+    }
     createMutation.mutate({
       type: values.type,
       title: values.title,
@@ -559,6 +588,9 @@ export function IssueWorkspacePage(): ReactElement {
     }
     const current = issueQuery.data
     if (current === undefined) {
+      return
+    }
+    if (!tryAcquireMutation('update')) {
       return
     }
     updateMutation.mutate({
@@ -584,6 +616,9 @@ export function IssueWorkspacePage(): ReactElement {
     if (current === undefined) {
       return
     }
+    if (!tryAcquireMutation('archive')) {
+      return
+    }
     archiveMutation.mutate({
       issueKey: current.issueKey,
       version: current.version,
@@ -603,7 +638,7 @@ export function IssueWorkspacePage(): ReactElement {
     targetStatusCode: string,
     targetIndex: number,
   ): void => {
-    if (anyMutationPending || mutationGuardRef.current || moveInFlightRef.current) {
+    if (anyMutationPending) {
       return
     }
     const issues = issuesQuery.data?.items
@@ -623,7 +658,9 @@ export function IssueWorkspacePage(): ReactElement {
     if (result.kind !== 'move') {
       return
     }
-    moveInFlightRef.current = true
+    if (!tryAcquireMutation('move')) {
+      return
+    }
     moveMutation.mutate({
       issueKey,
       targetStatusCode,

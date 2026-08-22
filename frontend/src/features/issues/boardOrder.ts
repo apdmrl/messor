@@ -17,6 +17,23 @@ export interface BoardColumn {
 }
 
 /**
+ * The single normalized workflow-status sequence used everywhere the board
+ * derives column order or movement controls. Immutable: sorts by server
+ * {@code position}, then by {@code code} as a deterministic tie-break. Never
+ * mutates the input and never trusts the client-provided array order.
+ */
+export function normalizeWorkflowStatuses(
+  workflowStatuses: WorkflowStatus[],
+): WorkflowStatus[] {
+  return workflowStatuses
+    .slice()
+    .sort(
+      (a, b) =>
+        a.position - b.position || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
+    )
+}
+
+/**
  * Order cards within a column using server rank ascending, then issue number
  * ascending, then issueKey as a final deterministic tie-breaker. Archived
  * issues never appear. Workflow position (not alphabetical status) is the
@@ -54,14 +71,103 @@ export function buildColumns(
   workflowStatuses: WorkflowStatus[],
   issues: Issue[],
 ): BoardColumn[] {
-  return workflowStatuses
-    .slice()
-    .sort((a, b) => a.position - b.position)
-    .map((status) => ({
-      statusCode: status.code,
-      displayName: status.displayName,
-      issues: columnIssues(issues, status.code),
-    }))
+  return normalizeWorkflowStatuses(workflowStatuses).map((status) => ({
+    statusCode: status.code,
+    displayName: status.displayName,
+    issues: columnIssues(issues, status.code),
+  }))
+}
+
+export interface DropIndexParams {
+  issues: Issue[]
+  draggedKey: string
+  overKey: string
+}
+
+/**
+ * Resolve the insertion index (in the reduced destination column, after the
+ * active card is removed) for a drop of {@code draggedKey} over {@code overKey}.
+ * Returns {@code null} for a true no-op (dropping a card on itself) so the
+ * caller never reaches the API.
+ *
+ * Direction rule:
+ * - Cross-column: always insert before the over card (a tested, explicit rule).
+ * - Same-column downward (dragged originally above the over card): insert after
+ *   the over card, compensating for the active card's own removal.
+ * - Same-column upward (dragged originally below the over card): insert before
+ *   the over card.
+ */
+export function resolveDropIndex(params: DropIndexParams): number | null {
+  const { issues, draggedKey, overKey } = params
+  if (draggedKey === overKey) {
+    return null
+  }
+  const dragged = issues.find((issue) => issue.issueKey === draggedKey)
+  const over = issues.find((issue) => issue.issueKey === overKey)
+  if (dragged === undefined || over === undefined) {
+    return null
+  }
+
+  const source = columnIssues(issues, dragged.statusCode)
+  const destination = columnIssues(issues, over.statusCode).filter(
+    (issue) => issue.issueKey !== draggedKey,
+  )
+  const overIndexInDestination = destination.findIndex(
+    (issue) => issue.issueKey === overKey,
+  )
+  if (overIndexInDestination === -1) {
+    return null
+  }
+
+  if (dragged.statusCode !== over.statusCode) {
+    return overIndexInDestination
+  }
+
+  const sourceIndex = source.findIndex((issue) => issue.issueKey === draggedKey)
+  const overSourceIndex = source.findIndex((issue) => issue.issueKey === overKey)
+  if (sourceIndex === -1 || overSourceIndex === -1) {
+    return null
+  }
+
+  if (sourceIndex < overSourceIndex) {
+    return overIndexInDestination + 1
+  }
+  return overIndexInDestination
+}
+
+export interface DragEndResolution {
+  targetStatusCode: string
+  targetIndex: number
+}
+
+/**
+ * Normalize a dnd-kit drag-end event (active/over ids) into the target status
+ * and insertion index that {@link computeMove} consumes. This is the pointer
+ * drag-end path: a card over id targets that card's column, and a column id
+ * targets the empty/whitespace append. Returns {@code null} to signal a true
+ * no-op or an unknown target so no API call is issued.
+ */
+export function resolveDragEnd(params: {
+  issues: Issue[]
+  activeId: string
+  overId: string
+}): DragEndResolution | null {
+  const { issues, activeId, overId } = params
+  if (overId.startsWith('column-')) {
+    return {
+      targetStatusCode: overId.slice('column-'.length),
+      targetIndex: Number.MAX_SAFE_INTEGER,
+    }
+  }
+  const over = issues.find((issue) => issue.issueKey === overId)
+  if (over === undefined) {
+    return null
+  }
+  const index = resolveDropIndex({ issues, draggedKey: activeId, overKey: overId })
+  if (index === null) {
+    return null
+  }
+  return { targetStatusCode: over.statusCode, targetIndex: index }
 }
 
 export interface MoveComputation {
