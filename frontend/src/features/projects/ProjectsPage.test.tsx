@@ -107,6 +107,14 @@ function renderProjectsPage(role: 'ORG_ADMIN' | 'USER' = 'ORG_ADMIN'): void {
               path="/projects/:projectKey/board"
               element={<div>BOARD</div>}
             />
+            <Route
+              path="/projects/:projectKey/issues"
+              element={<div>ISSUES</div>}
+            />
+            <Route
+              path="/projects/:projectKey/settings"
+              element={<div>SETTINGS</div>}
+            />
           </Routes>
         </MemoryRouter>
       </SessionContext.Provider>
@@ -193,7 +201,7 @@ describe('ProjectsPage', () => {
   })
 
   describe('overview summary action links', () => {
-    it('routes each project card to its board and settings surfaces', async () => {
+    it('routes each project card to its board, issues and settings surfaces', async () => {
       listProjectsMock.mockResolvedValue(populatedPage)
       renderProjectsPage()
 
@@ -229,6 +237,27 @@ describe('ProjectsPage', () => {
       if (alphaCard) {
         assertCardLinks(alphaCard, 'ALPHA', 'Alpha')
       }
+    })
+
+    it('renders the issues workspace when an issues action is activated', async () => {
+      listProjectsMock.mockResolvedValue(populatedPage)
+      const user = userEvent.setup()
+      renderProjectsPage()
+
+      await screen.findByText('Messor')
+
+      const cards = screen.getAllByRole('listitem')
+      const messorCard = cards.find((card) => within(card).queryByText('MES'))
+      expect(messorCard).toBeDefined()
+      if (messorCard) {
+        await user.click(
+          within(messorCard).getByRole('link', { name: 'İşler' }),
+        )
+      }
+
+      // The issues action resolves to a rendered workspace, not just a href.
+      expect(await screen.findByText('ISSUES')).toBeInTheDocument()
+      expect(screen.queryByText('BOARD')).not.toBeInTheDocument()
     })
   })
 
