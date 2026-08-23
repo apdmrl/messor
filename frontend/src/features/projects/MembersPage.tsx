@@ -198,7 +198,7 @@ export function MembersPage(): ReactElement {
 
   const showEmpty =
     projectQuery.isSuccess && membersQuery.isSuccess && membersQuery.data.length === 0
-  const showNoMatches =
+    const showNoMatches =
     projectQuery.isSuccess &&
     membersQuery.isSuccess &&
     membersQuery.data.length > 0 &&
@@ -207,12 +207,19 @@ export function MembersPage(): ReactElement {
   return (
     <div className="members-page">
       <nav className="members-page__nav" aria-label="Üye gezinme">
-        <Link className="members-page__back" to={`/projects/${key}/board`}>
-          Panoya dön
-        </Link>
-        <Link className="members-page__back" to={`/projects/${key}/settings`}>
-          Ayarlar
-        </Link>
+        {!projectQuery.isError && (
+          <>
+            <Link className="members-page__back" to={`/projects/${key}/board`}>
+              Panoya dön
+            </Link>
+            <Link
+              className="members-page__back"
+              to={`/projects/${key}/settings`}
+            >
+              Ayarlar
+            </Link>
+          </>
+        )}
         <Link className="members-page__back" to="/projects">
           Projelere dön
         </Link>
@@ -342,7 +349,7 @@ export function MembersPage(): ReactElement {
                   const isCurrentUser = member.userId === currentUserId
                   return (
                     <tr key={member.userId} className="members-page__row">
-                      <td className="members-page__member">
+                      <td className="members-page__member" data-label="Üye">
                         <span className="members-page__name">
                           {memberName(member)}
                           {isCurrentUser && (
@@ -351,7 +358,7 @@ export function MembersPage(): ReactElement {
                         </span>
                         <span className="members-page__email">{member.email}</span>
                       </td>
-                      <td className="members-page__role">
+                      <td className="members-page__role" data-label="Rol">
                         {isLead ? (
                           <select
                             className="members-page__role-select"
@@ -379,11 +386,11 @@ export function MembersPage(): ReactElement {
                           </span>
                         )}
                       </td>
-                      <td className="members-page__access">
+                      <td className="members-page__access" data-label="Erişim">
                         {ROLE_ACCESS_SUMMARY[member.role]}
                       </td>
                       {isLead && (
-                        <td className="members-page__actions">
+                        <td className="members-page__actions" data-label="İşlemler">
                           <button
                             type="button"
                             className="members-page__action"
@@ -402,8 +409,8 @@ export function MembersPage(): ReactElement {
                             <span className="members-page__confirm">
                               <span className="members-page__confirm-text">
                                 {memberName(member)} kaldırılsın mı? Üye,
-                                projeye erişimini kaybeder ve iş yükü
-                                atamaları kaldırılır.
+                                projeye erişimini kaybeder; mevcut iş atamaları
+                                korunur ve yeniden atanmalıdır.
                               </span>
                               <button
                                 type="button"

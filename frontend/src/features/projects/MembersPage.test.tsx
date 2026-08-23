@@ -171,20 +171,24 @@ describe('MembersPage', () => {
       expect(body).not.toContain('internal project secret')
     })
 
-    it('fails closed when project detail errors even if members load', async () => {
+    it('hides board and settings links after authoritative project access denial', async () => {
       getProjectMock.mockRejectedValue(
-        new ApiError(500, 'INTERNAL', 'internal secret'),
+        new ApiError(403, 'FORBIDDEN', 'Bu işlem için yetkiniz yok.'),
       )
       listProjectMembersMock.mockResolvedValue([adminMember])
       renderMembersPage()
 
       await screen.findByRole('alert')
-      const body = document.body.textContent ?? ''
-      expect(body).not.toContain('Ada Lovelace')
-      expect(body).not.toContain('admin@demo.messor.app')
       expect(
-        screen.queryByRole('button', { name: 'Ada Lovelace rolünü değiştir' }),
+        screen.queryByRole('link', { name: 'Panoya dön' }),
       ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('link', { name: 'Ayarlar' }),
+      ).not.toBeInTheDocument()
+      // Neutral recovery navigation remains.
+      expect(
+        screen.getByRole('link', { name: 'Projelere dön' }),
+      ).toBeInTheDocument()
     })
 
     it('shows an empty state when there are no members', async () => {
@@ -488,6 +492,11 @@ describe('MembersPage', () => {
         screen.getByRole('button', {
           name: 'Grace Hopper kaldırmayı onayla',
         }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          /mevcut iş atamaları korunur ve yeniden atanmalıdır/,
+        ),
       ).toBeInTheDocument()
       expect(
         screen.getByText(/projeye erişimini kaybeder/),

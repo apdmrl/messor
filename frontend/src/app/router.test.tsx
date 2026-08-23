@@ -205,6 +205,20 @@ describe('router', () => {
     expect(screen.getByRole('tab', { name: 'Yorumlar' })).toBeInTheDocument()
   })
 
+  it('routes /projects/:projectKey/members to the members page for an authenticated user', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    renderRouterAt(authenticatedSession, ['/projects/MES/members'])
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Üyeler ve erişim',
+        level: 2,
+      }),
+    ).toBeInTheDocument()
+    expect(listProjectMembersMock).toHaveBeenCalledWith('MES')
+  })
+
   it('redirects an anonymous user away from the protected board route to login', async () => {
     renderRouter(anonymousSession)
 

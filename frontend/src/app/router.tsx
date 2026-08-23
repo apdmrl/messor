@@ -5,6 +5,7 @@ import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
 import { IssueWorkspacePage } from '../features/issues/IssueWorkspacePage'
 import { MyWorkPage } from '../features/my-work/MyWorkPage'
+import { MembersPage } from '../features/projects/MembersPage'
 import { ProjectSettingsPage } from '../features/projects/ProjectSettingsPage'
 import { ProjectsPage } from '../features/projects/ProjectsPage'
 import { AuthenticatedShell } from './AuthenticatedShell'
@@ -85,6 +86,10 @@ export const routes: RouteObject[] = [
       {
         path: '/projects/:projectKey/settings',
         element: <ProjectSettingsPage />,
+      },
+      {
+        path: '/projects/:projectKey/members',
+        element: <MembersPage />,
       },
       {
         path: '/my-work',

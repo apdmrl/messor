@@ -390,10 +390,18 @@
 }
 
 /* Section panel */
-.settings-page__section {
+.settings-page__section-title-row {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-page__members-link {
+  color: var(--color-primary);
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .settings-page__members-link {
