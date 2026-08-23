@@ -276,6 +276,20 @@ describe('IssueComments', () => {
     })
   })
 
+  it('announces a successful new comment via a polite live region', async () => {
+    listIssueCommentsMock.mockResolvedValue([])
+    createCommentMock.mockResolvedValue(makeComment())
+    renderComments()
+    await screen.findByText('Henüz yorum yok.')
+
+    await userEvent.type(screen.getByLabelText('Yorum ekle'), 'a comment')
+    await userEvent.click(screen.getByRole('button', { name: 'Yorum yap' }))
+
+    expect(await screen.findByText('Yorum gönderildi.')).toBeInTheDocument()
+    const live = document.querySelector('[aria-live="polite"]')
+    expect(live).not.toBeNull()
+  })
+
   it('creates with whitespace preserved in the payload', async () => {
     listIssueCommentsMock.mockResolvedValue([])
     createCommentMock.mockResolvedValue(makeComment())
