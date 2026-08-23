@@ -46,6 +46,8 @@ function formatDate(value: string): string {
 }
 
 const LIST_ERROR_FALLBACK = 'Üyelikler yüklenemedi. Lütfen tekrar deneyin.'
+const PROJECT_ERROR_FALLBACK =
+  'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.'
 const GENERIC_ERROR = 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -222,6 +224,18 @@ export function ProjectSettingsPage(): ReactElement {
 
       <h2 className="settings-page__heading">Proje ayarları</h2>
 
+      {projectQuery.isLoading && (
+        <p className="settings-page__status" role="status">
+          Proje bilgileri yükleniyor…
+        </p>
+      )}
+
+      {projectQuery.isError && (
+        <p className="settings-page__error" role="alert">
+          {PROJECT_ERROR_FALLBACK}
+        </p>
+      )}
+
       {projectQuery.isSuccess && (
         <header className="settings-page__identity">
           <div className="settings-page__identity-main">
@@ -357,13 +371,13 @@ export function ProjectSettingsPage(): ReactElement {
             </p>
           )}
 
-          {projectQuery.isLoading || membersQuery.isLoading ? (
+          {membersQuery.isLoading ? (
             <p className="settings-page__status" role="status">
               Üyelikler yükleniyor…
             </p>
           ) : null}
 
-          {(projectQuery.isError || membersQuery.isError) && (
+          {membersQuery.isError && (
             <p className="settings-page__error" role="alert">
               {LIST_ERROR_FALLBACK}
             </p>
@@ -539,6 +553,7 @@ export function ProjectSettingsPage(): ReactElement {
           )}
         </section>
       )}
+
       {activeSection === 'appearance' && (
         <section
           className="settings-page__section"

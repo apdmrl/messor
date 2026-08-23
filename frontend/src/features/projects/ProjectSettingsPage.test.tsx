@@ -98,9 +98,7 @@ function renderSettingsPage(projectKey = 'MES'): QueryClient {
   return queryClient
 }
 
-async function openMembersTab(
-  user: UserEvent,
-): Promise<void> {
+async function openMembersTab(user: UserEvent): Promise<void> {
   await user.click(screen.getByRole('tab', { name: 'Üyeler' }))
 }
 
@@ -129,8 +127,44 @@ describe('ProjectSettingsPage', () => {
       renderSettingsPage()
       await openMembersTab(user)
 
-      expect(screen.getByRole('status')).toBeInTheDocument()
+      expect(screen.getAllByRole('status').length).toBeGreaterThan(0)
+      expect(
+        screen.getByText('Proje bilgileri yükleniyor…'),
+      ).toBeInTheDocument()
       expect(screen.getByText('Üyelikler yükleniyor…')).toBeInTheDocument()
+    })
+
+    it('shows project-detail loading at page scope on a direct settings visit', async () => {
+      getProjectMock.mockImplementation(
+        () => new Promise<ProjectDetail>(() => {}),
+      )
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      renderSettingsPage()
+
+      // Overview is the default section; the page reports the project-detail
+      // fetch without requiring the user to open the Members panel first.
+      expect(
+        screen.getByText('Proje bilgileri yükleniyor…'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a page-scope project-detail error on a direct settings visit', async () => {
+      getProjectMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal project secret'),
+      )
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      renderSettingsPage()
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal project secret')
+      // The identity header does not render without project data.
+      expect(
+        screen.queryByRole('heading', { name: 'Messor', level: 3 }),
+      ).not.toBeInTheDocument()
     })
 
     it('renders the settings heading and navigation back to the board', async () => {
@@ -139,7 +173,10 @@ describe('ProjectSettingsPage', () => {
       renderSettingsPage()
 
       expect(
-        await screen.findByRole('heading', { name: 'Proje ayarları', level: 2 }),
+        await screen.findByRole('heading', {
+          name: 'Proje ayarları',
+          level: 2,
+        }),
       ).toBeInTheDocument()
       expect(
         screen.getByRole('link', { name: 'Panoya dön' }),
@@ -154,7 +191,8 @@ describe('ProjectSettingsPage', () => {
       expect(screen.getAllByText('MES').length).toBeGreaterThan(0)
       expect(screen.getByText('Proje lideri')).toBeInTheDocument()
 
-      // Section navigation exposes overview, workflow and members.
+      // Section navigation exposes overview, workflow, members, appearance
+      // and danger zone entry points.
       expect(
         screen.getByRole('tab', { name: 'Genel Bakış' }),
       ).toBeInTheDocument()
@@ -192,7 +230,7 @@ describe('ProjectSettingsPage', () => {
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(
-        'Üyelikler yüklenemedi. Lütfen tekrar deneyin.',
+        'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
       )
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('internal project detail secret')
@@ -265,9 +303,7 @@ describe('ProjectSettingsPage', () => {
       const overviewPanel = await screen.findByRole('tabpanel', {
         name: 'Proje bilgileri',
       })
-      expect(
-        within(overviewPanel).getByText('Anahtar'),
-      ).toBeInTheDocument()
+      expect(within(overviewPanel).getByText('Anahtar')).toBeInTheDocument()
       expect(within(overviewPanel).getByText('MES')).toBeInTheDocument()
       expect(within(overviewPanel).getByText('Açıklama')).toBeInTheDocument()
       expect(
@@ -427,9 +463,7 @@ describe('ProjectSettingsPage', () => {
       })
       // A read-only notice explains the lack of management controls.
       expect(
-        screen.getByText(
-          /Üyelikler salt okunur. Üyeleri yalnızca proje liderleri/,
-        ),
+        screen.getByText(/Üyelikler salt okunur. Üyeleri yalnızca proje liderleri/),
       ).toBeInTheDocument()
 
       // The add form is not rendered for a read-only member.

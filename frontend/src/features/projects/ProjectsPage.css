@@ -65,10 +65,24 @@
   margin: 0;
   padding: 0.875rem 1rem;
   color: var(--color-danger);
-  background: rgba(163, 58, 50, 0.07);
-  border: 1px solid rgba(163, 58, 50, 0.25);
+  background: rgb(var(--messor-signal-danger) / 0.07);
+  border: 1px solid rgb(var(--messor-signal-danger) / 0.25);
   border-radius: var(--radius-md);
   font-size: 0.9rem;
+}
+.projects-list__status,
+.projects-list__empty {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  color: rgb(var(--messor-text-secondary));
+  background: rgb(var(--messor-surface-2));
+  border: 1px solid rgb(var(--messor-border-subtle));
+}
+
+.projects-list__empty {
+  color: rgb(var(--messor-text-muted));
 }
 
 .projects-list__items {
@@ -97,14 +111,14 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--messor-shadow-soft);
   text-decoration: none;
 }
 
 .project-card__link:hover,
 .project-card__link:focus-visible {
   border-color: var(--color-primary);
-  box-shadow: 0 10px 28px rgba(47, 93, 80, 0.13);
+  box-shadow: var(--messor-shadow-overlay);
   transform: translateY(-1px);
 }
 
@@ -159,10 +173,38 @@
   margin-top: auto;
   padding: 0.2rem 0.6rem;
   color: var(--color-primary-strong);
-  background: rgba(47, 93, 80, 0.11);
+  background: rgb(var(--messor-signal-success) / 0.11);
   border-radius: var(--radius-pill);
   font-size: 0.75rem;
   font-weight: 700;
+}
+.project-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.project-card__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.25rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-primary-strong);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.project-card__action:hover,
+.project-card__action:focus-visible {
+  color: var(--color-surface);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .projects-create {
@@ -171,7 +213,7 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
+  box-shadow: var(--messor-shadow-soft);
 }
 
 .projects-create__heading {
@@ -282,5 +324,8 @@
   .project-card__settings {
     min-height: 44px;
     align-self: flex-start;
+  }
+  .project-card__actions {
+    flex-direction: row;
   }
 }

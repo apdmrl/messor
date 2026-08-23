@@ -205,10 +205,14 @@ describe('ProjectsPage', () => {
         key: string,
         name: string,
       ): void => {
-        // The summary card itself opens the board; settings is a secondary link.
+        // The summary card itself opens the board; issues and settings are
+        // secondary overview actions.
         expect(
           within(card).getByRole('link', { name: new RegExp(name) }),
         ).toHaveAttribute('href', `/projects/${key}/board`)
+        expect(
+          within(card).getByRole('link', { name: 'İşler' }),
+        ).toHaveAttribute('href', `/projects/${key}/issues`)
         expect(
           within(card).getByRole('link', { name: 'Ayarlar' }),
         ).toHaveAttribute('href', `/projects/${key}/settings`)
