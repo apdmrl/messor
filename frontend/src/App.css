@@ -82,3 +82,55 @@
   line-height: 1.5;
   color: rgb(var(--messor-text-secondary));
 }
+/* ============================================================
+   Shared route-state boundaries (not-found / restricted / error / loading)
+   Neutral, fails closed, never exposes authorization details.
+   ============================================================ */
+.route-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.route-state__heading {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: rgb(var(--messor-text-primary));
+}
+
+.route-state__message {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: rgb(var(--messor-text-secondary));
+}
+
+.route-state__recovery {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.625rem 1.25rem;
+  font: inherit;
+  font-weight: 600;
+  color: rgb(var(--messor-surface-inverse));
+  background: rgb(var(--messor-signal-active));
+  border: 1px solid transparent;
+  border-radius: var(--messor-radius-card);
+  text-decoration: none;
+}
+
+.route-state__recovery:hover {
+  background: rgb(var(--messor-signal-active-soft));
+}
+
+.route-state__recovery:focus-visible {
+  outline: 2px solid rgb(var(--messor-signal-active));
+  outline-offset: 2px;
+}

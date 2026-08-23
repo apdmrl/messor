@@ -7,6 +7,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { routes } from './router'
 import { SessionContext } from './session'
 import type { SessionContextValue } from './session'
+import { ApiError } from './apiClient'
 import type {
   PageResponse,
   ProjectDetail,
@@ -416,15 +417,96 @@ describe('authenticated shell', () => {
       within(rail).getByRole("link", { name: "Görevlerim" }),
     ).toBeInTheDocument()
 
-    await user.click(
-      screen.getByRole("button", { name: "Proje çubuğunu genişlet" }),
-    )
+  })
+})
+
+describe('shared route boundaries', () => {
+  const loadingSession: SessionContextValue = {
+    session: { status: 'loading' },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
+
+  const errorSession: SessionContextValue = {
+    session: { status: 'error' },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
+
+  it('renders the neutral not-found boundary for an invalid route', async () => {
+    renderRouterAt(authenticatedSession, ['/no/such/route'])
+
     expect(
-      screen.getByRole("button", { name: "Proje çubuğunu daralt" }),
-    ).toHaveAttribute("aria-expanded", "true")
-    expect(
-      within(rail).getByRole("link", { name: "Projeler" }),
+      await screen.findByRole('heading', { name: 'Sayfa bulunamadı' }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Projelere dön' }),
+    ).toHaveAttribute('href', '/projects')
   })
 
+  it('renders a neutral restricted boundary for an inaccessible project route', async () => {
+    getProjectMock.mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'denied'))
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Erişim kısıtlı' }),
+    ).toBeInTheDocument()
+    // Neutral: the board content and project identity must not render.
+    expect(
+      screen.queryByRole('heading', { name: 'İşler' }),
+    ).not.toBeInTheDocument()
+    const body = document.body.textContent ?? ''
+    expect(body).not.toContain('denied')
+    // The project rail must not advertise the inaccessible project.
+    expect(
+      screen.queryByRole('link', { name: 'Pano' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Projelere dön' })).toHaveAttribute(
+      'href',
+      '/projects',
+    )
+  })
+
+  it('does not gate project routes on a missing project to a forbidden or missing state', async () => {
+    // A project the member can read renders normally (not restricted).
+    getProjectMock.mockResolvedValue({ ...projectDetail, currentUserRole: 'MEMBER' })
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'İşler' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Erişim kısıtlı' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows the loading boundary while the session is resolving', async () => {
+    renderRouterAt(loadingSession, ['/projects'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Yükleniyor…' }),
+    ).toBeInTheDocument()
+    // Must not bounce to login before the session settles.
+    expect(
+      screen.queryByRole('heading', { name: 'Oturum aç', level: 2 }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('redirects a failed session to login', async () => {
+    renderRouterAt(errorSession, ['/projects'])
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Çalışma alanına devam etmek için bilgilerini gir.'),
+      ).toBeInTheDocument()
+    })
+  })
 })

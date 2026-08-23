@@ -9,6 +9,8 @@ import { useSession } from './session'
 import type { UserSummary } from '../features/auth/types'
 import { getProject } from '../features/projects/projectsApi'
 import './AuthenticatedShell.css'
+import { ApiError } from './apiClient'
+import { RestrictedPage } from './routeBoundaries'
 
 const LOGOUT_ERROR_MESSAGE = 'Çıkış yapılamadı. Lütfen tekrar deneyin.'
 
@@ -126,6 +128,17 @@ export function AuthenticatedShell(): ReactElement {
   // remains authoritative. Fails closed while the project is unknown.
   const canManageProject =
     projectQuery.data?.currentUserRole === 'PROJECT_LEAD'
+  // A project-scoped route for a project the user cannot read (forbidden or
+  // missing) renders a neutral restricted boundary instead of page content.
+  // The backend stays authoritative; this is presentation-only and fails
+  // closed. Other project errors (e.g. transient network/5xx) fall through to
+  // the page's own error handling.
+  const projectError = projectQuery.error
+  const isProjectRestricted =
+    projectKey !== null &&
+    projectQuery.isError &&
+    projectError instanceof ApiError &&
+    (projectError.status === 403 || projectError.status === 404)
 
   if (session.status !== 'authenticated') {
     return <Outlet />
@@ -249,10 +262,10 @@ export function AuthenticatedShell(): ReactElement {
             <span className="bi-rail__label">Projeler</span>
           </NavLink>
 
-          {projectKey !== null && (
+          {projectKey !== null && projectQuery.isSuccess && (
             <div className="bi-rail__group">
               <span className="bi-rail__group-label">
-                {projectQuery.data?.name ?? 'Proje'}
+                {projectQuery.data.name}
               </span>
               <ProjectNavLink
                 to={`/projects/${projectKey}/board`}
@@ -271,7 +284,7 @@ export function AuthenticatedShell(): ReactElement {
         </nav>
 
         <main className="bi-content">
-          <Outlet />
+          {isProjectRestricted ? <RestrictedPage /> : <Outlet />}
         </main>
       </div>
     </div>
