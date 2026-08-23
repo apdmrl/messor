@@ -333,7 +333,7 @@ describe('authenticated shell', () => {
   }
 
 
-  it("renders project navigation with lead-only links for a project lead", async () => {
+  it("renders project navigation with only routes registered by the router", async () => {
     renderProject("PROJECT_LEAD")
     await screen.findByRole("heading", { name: "Messor", level: 2 })
 
@@ -341,17 +341,6 @@ describe('authenticated shell', () => {
     expect(within(rail).getByRole("link", { name: "Pano" })).toHaveAttribute(
       "href",
       "/projects/MES/board",
-    )
-    expect(within(rail).getByRole("link", { name: "İşler" })).toHaveAttribute(
-      "href",
-      "/projects/MES/issues",
-    )
-    expect(
-      within(rail).getByRole("link", { name: "Aktivite" }),
-    ).toHaveAttribute("href", "/projects/MES/activity")
-    expect(within(rail).getByRole("link", { name: "Üyeler" })).toHaveAttribute(
-      "href",
-      "/projects/MES/members",
     )
     expect(within(rail).getByRole("link", { name: "Ayarlar" })).toHaveAttribute(
       "href",
@@ -364,6 +353,16 @@ describe('authenticated shell', () => {
     expect(
       within(rail).getByRole("link", { name: "Projeler" }),
     ).not.toHaveAttribute("aria-current")
+    // No dead links: only destinations with registered routes are shown.
+    expect(
+      within(rail).queryByRole("link", { name: "İşler" }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Aktivite" }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Üyeler" }),
+    ).not.toBeInTheDocument()
   })
 
   it("hides lead-only project links for a project member", async () => {
@@ -373,10 +372,45 @@ describe('authenticated shell', () => {
     const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
     expect(within(rail).getByRole("link", { name: "Pano" })).toBeInTheDocument()
     expect(
-      within(rail).queryByRole("link", { name: "Üyeler" }),
-    ).not.toBeInTheDocument()
-    expect(
       within(rail).queryByRole("link", { name: "Ayarlar" }),
     ).not.toBeInTheDocument()
   })
+
+  it("keeps primary navigation accessible across rail collapse states", async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ["/projects"])
+    await screen.findByRole("heading", { name: "Projeler", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).toBeInTheDocument()
+    expect(
+      within(rail).getByRole("link", { name: "Görevlerim" }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: "Proje çubuğunu daralt" }),
+    )
+    expect(
+      screen.getByRole("button", { name: "Proje çubuğunu genişlet" }),
+    ).toHaveAttribute("aria-expanded", "false")
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).toBeInTheDocument()
+    expect(
+      within(rail).getByRole("link", { name: "Görevlerim" }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: "Proje çubuğunu genişlet" }),
+    )
+    expect(
+      screen.getByRole("button", { name: "Proje çubuğunu daralt" }),
+    ).toHaveAttribute("aria-expanded", "true")
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).toBeInTheDocument()
+  })
+
 })

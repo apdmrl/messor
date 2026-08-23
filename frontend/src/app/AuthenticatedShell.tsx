@@ -71,16 +71,36 @@ function IconChevron(): ReactElement {
   )
 }
 
+function IconBoard(): ReactElement {
+  return (
+    <svg className="bi-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2.5" y="3" width="4.5" height="10" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9" y="3" width="4.5" height="7" rx="1" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  )
+}
+
+function IconSettings(): ReactElement {
+  return (
+    <svg className="bi-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.8 3.8l1.4 1.4M10.8 10.8l1.4 1.4M12.2 3.8l-1.4 1.4M5.2 10.8l-1.4 1.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function ProjectNavLink({
   to,
   label,
+  icon,
 }: {
   to: string
   label: string
+  icon: ReactElement
 }): ReactElement {
   return (
     <NavLink to={to} className={navLinkClass} aria-label={label}>
-      <span className="bi-rail__project-mark" aria-hidden="true" />
+      {icon}
       <span className="bi-rail__label">{label}</span>
     </NavLink>
   )
@@ -237,25 +257,13 @@ export function AuthenticatedShell(): ReactElement {
               <ProjectNavLink
                 to={`/projects/${projectKey}/board`}
                 label="Pano"
+                icon={<IconBoard />}
               />
-              <ProjectNavLink
-                to={`/projects/${projectKey}/issues`}
-                label="İşler"
-              />
-              <ProjectNavLink
-                to={`/projects/${projectKey}/activity`}
-                label="Aktivite"
-              />
-              {canManageProject && (
-                <ProjectNavLink
-                  to={`/projects/${projectKey}/members`}
-                  label="Üyeler"
-                />
-              )}
               {canManageProject && (
                 <ProjectNavLink
                   to={`/projects/${projectKey}/settings`}
                   label="Ayarlar"
+                  icon={<IconSettings />}
                 />
               )}
             </div>

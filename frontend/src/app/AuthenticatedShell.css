@@ -274,20 +274,6 @@
   text-overflow: ellipsis;
 }
 
-.bi-rail__project-mark {
-  width: 0.5rem;
-  height: 0.5rem;
-  flex: 0 0 auto;
-  border: 1px solid rgb(var(--messor-border-strong));
-  border-radius: 1px;
-}
-
-.bi-rail__link--active .bi-rail__project-mark {
-  border-color: rgb(var(--messor-signal-active));
-  background: rgb(var(--messor-signal-active));
-}
-
-.bi-rail--collapsed .bi-rail__project-mark,
 .bi-rail--collapsed .bi-rail__group-label {
   display: none;
 }
@@ -300,21 +286,12 @@
 }
 
 @media (max-width: 767px) {
-  /* Narrow fallback: the rail becomes an icon rail so content stays usable
-     and interactive targets remain at least 40px. */
-  .bi-rail {
-    width: 56px;
-  }
-
-  .bi-rail__label,
-  .bi-rail__group-label {
-    display: none;
-  }
-
+  /* Narrow fallback: honor the rail toggle in both states. Expanded keeps its
+     labels for usable navigation; collapsed is the 56px icon rail via the
+     .bi-rail--collapsed rules (icons stay visible). The toggle's aria-expanded
+     therefore always matches the visible rail. Interactive targets stay >= 40px. */
   .bi-rail__link,
   .bi-rail__toggle {
-    justify-content: center;
-    padding: 0;
     min-width: 40px;
     min-height: 40px;
   }
