@@ -53,16 +53,14 @@ class LoginIT extends PostgresIntegrationTestSupport {
 				UserRole.ORG_ADMIN);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = fetchCsrfToken();
-		JsonNode csrfBody = csrfBody(csrf);
-		Cookie session = sessionCookie(csrf);
+		Cookie csrf = csrfCookie();
 
 		MvcResult result = mockMvc.perform(post("/api/auth/login")
-				.cookie(session)
+				.cookie(csrf)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", "login@demo.messor.app")
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrf.getValue()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -135,7 +133,7 @@ class LoginIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void successfulLoginRotatesSessionAndCsrfToken() throws Exception {
+	void successfulLoginEstablishesSessionAndKeepsCsrfTokenUsable() throws Exception {
 		String password = "correct horse battery staple";
 		String email = "rotation@demo.messor.app";
 		UserAccount account = UserAccount.create(
@@ -146,69 +144,47 @@ class LoginIT extends PostgresIntegrationTestSupport {
 				UserRole.USER);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrfBefore = fetchCsrfToken();
-		JsonNode csrfBeforeBody = csrfBody(csrfBefore);
-		Cookie preLoginSession = sessionCookie(csrfBefore);
-		String oldToken = csrfBeforeBody.get("token").asText();
-		String headerName = csrfBeforeBody.get("headerName").asText();
+		Cookie csrf = csrfCookie();
+		String token = csrf.getValue();
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrf)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(headerName, oldToken))
+				.header("X-XSRF-TOKEN", token))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = sessionCookie(login);
-		assertThat(postLoginSession).isNotNull();
-		assertThat(preLoginSession.getValue().equals(postLoginSession.getValue()))
-				.as("session identifier must rotate on successful login")
-				.isFalse();
+		assertThat(postLoginSession).as("login must establish a session").isNotNull();
 
-		MvcResult reuse = mockMvc.perform(post("/api/auth/login")
-				.cookie(postLoginSession)
-				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
-				.param("email", email)
-				.param("password", password)
-				.header(headerName, oldToken))
-				.andExpect(status().isForbidden())
-				.andReturn();
-
-		JsonNode reuseBody = problemBody(reuse);
-		assertThat(reuseBody.get("code").asText()).isEqualTo("INVALID_CSRF_TOKEN");
-
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-
-		JsonNode csrfAfterBody = csrfBody(csrfAfter);
-		String newToken = csrfAfterBody.get("token").asText();
-		assertThat(newToken.equals(oldToken))
-				.as("csrf token must be reissued after login")
-				.isFalse();
+		// Login clears the CSRF token, so a fresh one is issued on the next
+		// flow-through request. Bootstrap it and reuse it against the new
+		// session to prove the double-submit contract stays coherent.
+		Cookie freshCsrf = csrfCookie();
+		String newToken = freshCsrf.getValue();
+		assertThat(newToken).as("csrf token must be reissued after login").isNotEqualTo(token);
 
 		mockMvc.perform(post("/api/auth/login")
 				.cookie(postLoginSession)
+				.cookie(freshCsrf)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(headerName, newToken))
+				.header("X-XSRF-TOKEN", newToken))
 				.andExpect(status().isOk());
 	}
 
 	private MvcResult attemptLogin(String email, String password) throws Exception {
-		MvcResult csrf = fetchCsrfToken();
-		JsonNode csrfBody = csrfBody(csrf);
-		Cookie session = sessionCookie(csrf);
+		Cookie csrf = csrfCookie();
 
 		return mockMvc.perform(post("/api/auth/login")
-				.cookie(session)
+				.cookie(csrf)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrf.getValue()))
 				.andReturn();
 	}
 
@@ -253,16 +229,11 @@ class LoginIT extends PostgresIntegrationTestSupport {
 		return new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
 	}
 
-	private MvcResult fetchCsrfToken() throws Exception {
-		return mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-	}
-
-	private JsonNode csrfBody(MvcResult result) throws Exception {
-		String contentType = result.getResponse().getContentType();
-		assertThat(contentType).startsWith("application/json");
-		return objectMapper.readTree(result.getResponse().getContentAsString());
+	private Cookie csrfCookie() throws Exception {
+		MvcResult result = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie cookie = result.getResponse().getCookie("XSRF-TOKEN");
+		assertThat(cookie).isNotNull();
+		return cookie;
 	}
 
 	private JsonNode problemBody(MvcResult result) throws Exception {

@@ -27,8 +27,7 @@ const AUTH_FAILED = {
   code: 'AUTHENTICATION_FAILED',
 }
 
-const CSRF_HEADER = 'X-Test-Csrf'
-const CSRF_PARAM = '_csrf'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
 
 interface LoginRequestCapture {
   body: URLSearchParams | null
@@ -56,25 +55,15 @@ async function mockAuthenticatedMe(page: Page, user: Record<string, unknown>): P
 }
 
 /**
- * CSRF endpoint. Returns `tokens[0]` on the first call and `tokens[1]` on
- * subsequent calls (rotation). Tokens are route fixtures only and must never
- * appear in DOM/storage/log assertions.
+ * Seed the non-HttpOnly XSRF-TOKEN cookie the SPA reads and echoes in the
+ * X-XSRF-TOKEN header. The mocked routes never return a real Set-Cookie, so
+ * the token is injected before the app loads. These are route fixtures only
+ * and must never appear in DOM/storage/log assertions.
  */
-async function mockCsrf(page: Page, tokens: [string, string]): Promise<void> {
-  let call = 0
-  await page.route('**/api/auth/csrf', (route) => {
-    const token = call === 0 ? tokens[0] : tokens[1]
-    call += 1
-    route.fulfill({
-      status: 200,
-      contentType: JSON_JSON,
-      body: JSON.stringify({
-        headerName: CSRF_HEADER,
-        parameterName: CSRF_PARAM,
-        token,
-      }),
-    })
-  })
+async function seedCsrfCookie(page: Page, token: string): Promise<void> {
+  await page.addInitScript((value) => {
+    document.cookie = `XSRF-TOKEN=${value}; path=/`
+  }, token)
 }
 
 /** Login success: captures the request, returns 200 UserSummary. */
@@ -168,7 +157,7 @@ async function expectVisibleFocus(locator: import('@playwright/test').Locator): 
    ============================================================ */
 test('login layout fits every viewport', async ({ page }) => {
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   const heading = page.getByRole('heading', { name: 'Messor' })
@@ -205,7 +194,7 @@ test('login layout fits every viewport', async ({ page }) => {
    ============================================================ */
 test('layout mode matches viewport width', async ({ page }) => {
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   const brand = page.locator('.login-brand')
@@ -235,7 +224,7 @@ test('layout mode matches viewport width', async ({ page }) => {
    ============================================================ */
 test('touch targets and form usability', async ({ page }) => {
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   const email = page.getByLabel('E-posta')
@@ -271,7 +260,7 @@ test('touch targets and form usability', async ({ page }) => {
    ============================================================ */
 test('logical keyboard order and visible focus', async ({ page }) => {
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   const email = page.getByLabel('E-posta')
@@ -297,7 +286,7 @@ test('logical keyboard order and visible focus', async ({ page }) => {
 test('reduced motion disables animations and transitions', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   const dot = page.locator('.login-ant-trail__dot').first()
@@ -320,7 +309,7 @@ test('reduced motion disables animations and transitions', async ({ page }) => {
    ============================================================ */
 test('login error is announced safely', async ({ page }) => {
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await mockLoginFailure(page)
   await page.goto('/')
 
@@ -355,7 +344,7 @@ test('login error is announced safely', async ({ page }) => {
 test('successful mocked login flow', async ({ page }) => {
   const capture: LoginRequestCapture = { body: null, csrfHeader: null }
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await mockLoginSuccess(page, MEMBER_USER, capture)
   await page.goto('/')
 
@@ -396,7 +385,7 @@ test('mobile keyboard-height resilience', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-360', 'keyboard-height test runs on mobile-360 only')
 
   await mockAnonymousMe(page)
-  await mockCsrf(page, ['masked-test-token-1', 'masked-test-token-2'])
+  await seedCsrfCookie(page, 'masked-test-token-1')
   await page.goto('/')
 
   // Simulate on-screen keyboard shrinking the visible area.

@@ -3,8 +3,8 @@ import type { Mock } from 'vitest'
 
 const ISSUES_URL = '/api/issues'
 const COMMENTS_URL = '/api/comments'
-const CSRF_URL = '/api/auth/csrf'
-const CSRF_HEADER = 'X-Custom-Csrf-Header'
+const CSRF_COOKIE = 'XSRF-TOKEN'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -13,12 +13,12 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function csrfResponse(token: string): Response {
-  return jsonResponse({
-    headerName: CSRF_HEADER,
-    parameterName: '_csrf',
-    token,
-  })
+function setCsrfCookie(token: string): void {
+  document.cookie = `${CSRF_COOKIE}=${token}; Path=/`
+}
+
+function clearCsrfCookie(): void {
+  document.cookie = `${CSRF_COOKIE}=; Max-Age=0; Path=/`
 }
 
 function fetchMock(): Mock {
@@ -47,11 +47,13 @@ describe('commentsApi', () => {
   let fetchSpy: Mock
 
   beforeEach(() => {
+    setCsrfCookie('token-1')
     fetchSpy = fetchMock()
     vi.stubGlobal('fetch', fetchSpy)
   })
 
   afterEach(() => {
+    clearCsrfCookie()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -79,15 +81,11 @@ describe('commentsApi', () => {
   })
 
   it('createComment POSTs the exact body with CSRF on the encoded URL', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(comment, 201))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(comment, 201))
     const { createComment } = await loadModules()
     const result = await createComment('MES-1', { body: 'hi' })
 
-    const csrfCall = fetchSpy.mock.calls[0] as [string]
-    expect(csrfCall[0]).toBe(CSRF_URL)
-    const [, init] = fetchSpy.mock.calls[1] as [string, RequestInit]
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('POST')
     expect((init.headers as Record<string, string>)[CSRF_HEADER]).toBe('token-1')
     expect((init.headers as Record<string, string>)['Content-Type']).toBe(
@@ -98,24 +96,20 @@ describe('commentsApi', () => {
   })
 
   it('createComment preserves whitespace in the body payload', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({ ...comment, body: '  a  ' }))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ ...comment, body: '  a  ' }))
     const { createComment } = await loadModules()
     await createComment('MES-1', { body: '  a  ' })
 
-    const [, init] = fetchSpy.mock.calls[1] as [string, RequestInit]
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(init.body as string)).toEqual({ body: '  a  ' })
   })
 
   it('updateComment PATCHes body and expectedVersion with CSRF', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({ ...comment, body: 'edited', version: 1 }))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ ...comment, body: 'edited', version: 1 }))
     const { updateComment } = await loadModules()
     await updateComment('c-1', { body: 'edited', expectedVersion: 0 })
 
-    const [, init] = fetchSpy.mock.calls[1] as [string, RequestInit]
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('PATCH')
     expect(JSON.parse(init.body as string)).toEqual({
       body: 'edited',
@@ -125,24 +119,20 @@ describe('commentsApi', () => {
   })
 
   it('updateComment encodes the comment id', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(comment))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(comment))
     const { updateComment } = await loadModules()
     await updateComment('a/b', { body: 'x', expectedVersion: 0 })
 
-    const [url] = fetchSpy.mock.calls[1] as [string]
+    const [url] = fetchSpy.mock.calls[0] as [string]
     expect(url).toBe(`${COMMENTS_URL}/a%2Fb`)
   })
 
   it('deleteComment DELETEs with CSRF and encoded expectedVersion query param', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({ ...comment, deleted: true, version: 1 }))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ ...comment, deleted: true, version: 1 }))
     const { deleteComment } = await loadModules()
     const result = await deleteComment('c-1', 3)
 
-    const [url, init] = fetchSpy.mock.calls[1] as [string, RequestInit]
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
     expect(init.method).toBe('DELETE')
     expect(url).toBe(`${COMMENTS_URL}/c-1?expectedVersion=3`)
     expect((init.headers as Record<string, string>)[CSRF_HEADER]).toBe('token-1')

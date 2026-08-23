@@ -220,8 +220,7 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 
 		LoginSession outsider = login("flt-nonmember@example.com", UserRole.USER);
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(outsider.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"))
@@ -256,8 +255,7 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 	private JsonNode listAndExpect(LoginSession session, String projectKey, String query)
 			throws Exception {
 		String url = "/api/projects/{key}/issues".replace("{key}", projectKey);
-		MvcResult result = mockMvc.perform(get(url + (query.isEmpty() ? "" : "?" + query))
-				.cookie(session.session()))
+		MvcResult result = mockMvc.perform(get(url + (query.isEmpty() ? "" : "?" + query)).cookie(session.session(), session.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -268,7 +266,7 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 	private org.springframework.test.web.servlet.ResultActions perform(
 			LoginSession session, String projectKey, String query) throws Exception {
 		String url = "/api/projects/{key}/issues".replace("{key}", projectKey);
-		return mockMvc.perform(get(url + "?" + query).cookie(session.session()));
+		return mockMvc.perform(get(url + "?" + query).cookie(session.session(), session.csrfCookie()));
 	}
 
 	private void expectValidationFailed(
@@ -326,8 +324,7 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 
 	private String createProject(LoginSession session, String key, String name)
 			throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -343,8 +340,7 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 			String title, String description, UUID assigneeId) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -372,33 +368,25 @@ class IssueListFiltersIT extends PostgresIntegrationTestSupport {
 				email, passwordEncoder.encode(password), "Ada", "Lovelace", role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper
-				.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(account.getId(), postLoginSession,
-				csrfAfterBody.get("headerName").asText(), csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader,
-			String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 }

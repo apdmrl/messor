@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
 const PROJECTS_URL = '/api/projects'
-const CSRF_URL = '/api/auth/csrf'
-const CSRF_HEADER = 'X-Custom-Csrf-Header'
+const CSRF_COOKIE = 'XSRF-TOKEN'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -26,12 +26,12 @@ function problemResponse(status: number, code: string, detail: string): Response
   )
 }
 
-function csrfResponse(token: string): Response {
-  return jsonResponse({
-    headerName: CSRF_HEADER,
-    parameterName: '_csrf',
-    token,
-  })
+function setCsrfCookie(token: string): void {
+  document.cookie = `${CSRF_COOKIE}=${token}; Path=/`
+}
+
+function clearCsrfCookie(): void {
+  document.cookie = `${CSRF_COOKIE}=; Max-Age=0; Path=/`
 }
 
 function fetchMock(): Mock {
@@ -54,11 +54,13 @@ describe('projectsApi', () => {
   let fetchSpy: Mock
 
   beforeEach(() => {
+    setCsrfCookie('token-1')
     fetchSpy = fetchMock()
     vi.stubGlobal('fetch', fetchSpy)
   })
 
   afterEach(() => {
+    clearCsrfCookie()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -95,20 +97,13 @@ describe('projectsApi', () => {
       updatedAt: '2026-01-01T00:00:00Z',
       workflowStatuses: [],
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(detail, 201))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(detail, 201))
 
     const { createProject } = await loadModules()
     const result = await createProject({ key: 'MES', name: 'Messor' })
 
     expect(result).toEqual(detail)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const createCall = fetchSpy.mock.calls[1]
+    const createCall = fetchSpy.mock.calls[0]
     expect(createCall[0]).toBe(PROJECTS_URL)
     expect(createCall[1].method).toBe('POST')
     expect(createCall[1].credentials).toBe('include')
@@ -134,32 +129,31 @@ describe('projectsApi', () => {
       updatedAt: '2026-01-01T00:00:00Z',
       workflowStatuses: [],
     }
+    setCsrfCookie('stale-token')
     fetchSpy
-      .mockResolvedValueOnce(csrfResponse('stale-token'))
-      .mockResolvedValueOnce(
-        problemResponse(403, 'INVALID_CSRF_TOKEN', 'Invalid CSRF token'),
-      )
-      .mockResolvedValueOnce(csrfResponse('fresh-token'))
+      .mockImplementationOnce(async () => {
+        setCsrfCookie('fresh-token')
+        return problemResponse(403, 'INVALID_CSRF_TOKEN', 'Invalid CSRF token')
+      })
       .mockResolvedValueOnce(jsonResponse(detail, 201))
 
     const { createProject } = await loadModules()
     const result = await createProject({ key: 'MES', name: 'Messor' })
 
     expect(result).toEqual(detail)
-    // csrf, failed create, fresh csrf, retried create
-    expect(fetchSpy).toHaveBeenCalledTimes(4)
-    const retriedCreate = fetchSpy.mock.calls[3]
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    const retriedCreate = fetchSpy.mock.calls[1]
     expect(retriedCreate[0]).toBe(PROJECTS_URL)
     expect(retriedCreate[1].headers[CSRF_HEADER]).toBe('fresh-token')
   })
 
   it('does not retry more than once when the retry also fails', async () => {
+    setCsrfCookie('stale-token')
     fetchSpy
-      .mockResolvedValueOnce(csrfResponse('stale-token'))
-      .mockResolvedValueOnce(
-        problemResponse(403, 'INVALID_CSRF_TOKEN', 'Invalid CSRF token'),
-      )
-      .mockResolvedValueOnce(csrfResponse('fresh-token'))
+      .mockImplementationOnce(async () => {
+        setCsrfCookie('fresh-token')
+        return problemResponse(403, 'INVALID_CSRF_TOKEN', 'Invalid CSRF token')
+      })
       .mockResolvedValueOnce(
         problemResponse(500, 'INTERNAL', 'internal server secret'),
       )
@@ -171,15 +165,13 @@ describe('projectsApi', () => {
 
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 500, code: 'INTERNAL' })
-    expect(fetchSpy).toHaveBeenCalledTimes(4)
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
   it('converts a Problem Details response into a typed ApiError with safe detail', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(
-        problemResponse(409, 'PROJECT_KEY_ALREADY_EXISTS', 'Bu anahtar kullanımda.'),
-      )
+    fetchSpy.mockResolvedValueOnce(
+      problemResponse(409, 'PROJECT_KEY_ALREADY_EXISTS', 'Bu anahtar kullanımda.'),
+    )
 
     const { createProject, ApiError } = await loadModules()
     const error = await createProject({ key: 'MES', name: 'Messor' }).catch(
@@ -195,14 +187,12 @@ describe('projectsApi', () => {
   })
 
   it('produces a fixed fallback for a malformed error body without leaking content', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(
-        new Response('<html>internal stack trace</html>', {
-          status: 500,
-          headers: { 'Content-Type': 'text/html' },
-        }),
-      )
+    fetchSpy.mockResolvedValueOnce(
+      new Response('<html>internal stack trace</html>', {
+        status: 500,
+        headers: { 'Content-Type': 'text/html' },
+      }),
+    )
 
     const { createProject, ApiError } = await loadModules()
     const error = await createProject({ key: 'MES', name: 'Messor' }).catch(
@@ -233,9 +223,7 @@ describe('projectsApi', () => {
       updatedAt: '2026-01-01T00:00:00Z',
       workflowStatuses: [],
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(detail, 201))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(detail, 201))
 
     const { createProject } = await loadModules()
     await createProject({ key: 'MES', name: 'Messor' })
@@ -257,16 +245,12 @@ describe('projectsApi', () => {
     }
     const hostileDetail = 'internal session secret: session-store-42'
 
-    // 1. First mutation succeeds and caches CSRF token A.
+    setCsrfCookie('token-A')
     fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-A'))
       .mockResolvedValueOnce(jsonResponse(detail, 201))
-      // 2. Protected GET returns 401 UNAUTHENTICATED with a hostile detail.
       .mockResolvedValueOnce(
         problemResponse(401, 'UNAUTHENTICATED', hostileDetail),
       )
-      // 4. Second mutation must fetch a fresh CSRF token (not reuse token A).
-      .mockResolvedValueOnce(csrfResponse('token-B'))
       .mockResolvedValueOnce(jsonResponse(detail, 201))
 
     const { createProject, listProjects, ApiError } = await loadModules()
@@ -279,12 +263,13 @@ describe('projectsApi', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 401, code: 'UNAUTHENTICATED' })
 
+    setCsrfCookie('token-B')
+
     // 4. Second mutation must fetch a fresh CSRF token rather than reuse token A.
     await createProject({ key: 'MES', name: 'Messor' })
 
-    // csrf-A, create-1, unauth GET, csrf-B, create-2
-    expect(fetchSpy).toHaveBeenCalledTimes(5)
-    const secondCreate = fetchSpy.mock.calls[4]
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    const secondCreate = fetchSpy.mock.calls[2]
     expect(secondCreate[0]).toBe(PROJECTS_URL)
     expect(secondCreate[1].method).toBe('POST')
     expect(secondCreate[1].headers[CSRF_HEADER]).toBe('token-B')
@@ -304,11 +289,13 @@ describe('projectsApi membership functions', () => {
   }
 
   beforeEach(() => {
+    setCsrfCookie('token-1')
     fetchSpy = fetchMock()
     vi.stubGlobal('fetch', fetchSpy)
   })
 
   afterEach(() => {
+    clearCsrfCookie()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -351,9 +338,7 @@ describe('projectsApi membership functions', () => {
   })
 
   it('addProjectMember POSTs the exact body with the in-memory CSRF token', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(member, 201))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(member, 201))
 
     const { addProjectMember } = await loadModules()
     const result = await addProjectMember('MES', {
@@ -362,12 +347,7 @@ describe('projectsApi membership functions', () => {
     })
 
     expect(result).toEqual(member)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const addCall = fetchSpy.mock.calls[1]
+    const addCall = fetchSpy.mock.calls[0]
     expect(addCall[0]).toBe(`${PROJECTS_URL}/MES/members`)
     expect(addCall[1].method).toBe('POST')
     expect(addCall[1].credentials).toBe('include')
@@ -382,9 +362,7 @@ describe('projectsApi membership functions', () => {
   })
 
   it('changeProjectMemberRole PATCHes the exact path and body including expectedVersion', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
 
     const { changeProjectMemberRole } = await loadModules()
     const result = await changeProjectMemberRole('MES', member.userId, {
@@ -393,12 +371,7 @@ describe('projectsApi membership functions', () => {
     })
 
     expect(result).toMatchObject({ role: 'VIEWER', version: 4 })
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const patchCall = fetchSpy.mock.calls[1]
+    const patchCall = fetchSpy.mock.calls[0]
     expect(patchCall[0]).toBe(`${PROJECTS_URL}/MES/members/${member.userId}`)
     expect(patchCall[1].method).toBe('PATCH')
     expect(patchCall[1].headers).toMatchObject({
@@ -412,20 +385,13 @@ describe('projectsApi membership functions', () => {
   })
 
   it('removeProjectMember DELETEs the exact path with expectedVersion query param', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }))
 
     const { removeProjectMember } = await loadModules()
     const result = await removeProjectMember('MES', member.userId, 3)
 
     expect(result).toBeUndefined()
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const deleteCall = fetchSpy.mock.calls[1]
+    const deleteCall = fetchSpy.mock.calls[0]
     expect(deleteCall[0]).toBe(
       `${PROJECTS_URL}/MES/members/${member.userId}?expectedVersion=3`,
     )
@@ -448,9 +414,7 @@ describe('projectsApi membership functions', () => {
   it('encodes both projectKey and userId segments in a PATCH URL', async () => {
     const projectKey = 'M E/S'
     const userId = 'user id/with+reserved&chars'
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({ ...member, role: 'VIEWER', version: 4 }))
 
     const { changeProjectMemberRole } = await loadModules()
     await changeProjectMemberRole(projectKey, userId, {
@@ -460,7 +424,7 @@ describe('projectsApi membership functions', () => {
 
     const encodedProjectKey = encodeURIComponent(projectKey)
     const encodedUserId = encodeURIComponent(userId)
-    const patchCall = fetchSpy.mock.calls[1]
+    const patchCall = fetchSpy.mock.calls[0]
     expect(patchCall[0]).toBe(
       `${PROJECTS_URL}/${encodedProjectKey}/members/${encodedUserId}`,
     )
@@ -480,16 +444,14 @@ describe('projectsApi membership functions', () => {
   it('encodes both projectKey and userId segments in a DELETE URL', async () => {
     const projectKey = 'M E/S'
     const userId = 'user id/with+reserved&chars'
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }))
 
     const { removeProjectMember } = await loadModules()
     await removeProjectMember(projectKey, userId, 3)
 
     const encodedProjectKey = encodeURIComponent(projectKey)
     const encodedUserId = encodeURIComponent(userId)
-    const deleteCall = fetchSpy.mock.calls[1]
+    const deleteCall = fetchSpy.mock.calls[0]
     expect(deleteCall[0]).toBe(
       `${PROJECTS_URL}/${encodedProjectKey}/members/${encodedUserId}?expectedVersion=3`,
     )

@@ -87,9 +87,9 @@ boundary (`identity`, `project`, `issue`, `comment`).
   JavaScript. The frontend keeps auth state in memory only; nothing is persisted
   to `localStorage` or `sessionStorage`.
 - CSRF is enforced by Spring Security for every state-changing request. The SPA
-  fetches the token from `GET /api/auth/csrf`, holds it in memory, and sends it
-  with the `X-CSRF-TOKEN` header on mutations. Missing, invalid, or cross-session
-  tokens are rejected with `403 INVALID_CSRF_TOKEN`.
+  reads the non-HttpOnly `XSRF-TOKEN` cookie and echoes it in the
+  `X-XSRF-TOKEN` header. The token is never returned in an API response body;
+  missing or invalid values are rejected with `403 INVALID_CSRF_TOKEN`.
 - Development uses `Secure=false` so plain-HTTP `localhost` works. The production
   profile keeps the `__Host-MESSOR_SESSION` cookie `Secure`; it is never used in
   development and the two contracts never mix.

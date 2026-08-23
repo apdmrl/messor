@@ -3,8 +3,8 @@ import type { Mock } from 'vitest'
 
 const PROJECTS_URL = '/api/projects'
 const ISSUES_URL = '/api/issues'
-const CSRF_URL = '/api/auth/csrf'
-const CSRF_HEADER = 'X-Custom-Csrf-Header'
+const CSRF_COOKIE = 'XSRF-TOKEN'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
 
 const filters = {
   project: null,
@@ -38,12 +38,12 @@ function problemResponse(status: number, code: string, detail: string): Response
   )
 }
 
-function csrfResponse(token: string): Response {
-  return jsonResponse({
-    headerName: CSRF_HEADER,
-    parameterName: '_csrf',
-    token,
-  })
+function setCsrfCookie(token: string): void {
+  document.cookie = `${CSRF_COOKIE}=${token}; Path=/`
+}
+
+function clearCsrfCookie(): void {
+  document.cookie = `${CSRF_COOKIE}=; Max-Age=0; Path=/`
 }
 
 function fetchMock(): Mock {
@@ -65,11 +65,13 @@ describe('issuesApi', () => {
   let fetchSpy: Mock
 
   beforeEach(() => {
+    setCsrfCookie('token-1')
     fetchSpy = fetchMock()
     vi.stubGlobal('fetch', fetchSpy)
   })
 
   afterEach(() => {
+    clearCsrfCookie()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -215,9 +217,7 @@ describe('issuesApi', () => {
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(issue, 201))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(issue, 201))
 
     const { createIssue } = await loadModules()
     const result = await createIssue('MES', {
@@ -228,12 +228,7 @@ describe('issuesApi', () => {
     })
 
     expect(result).toEqual(issue)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const createCall = fetchSpy.mock.calls[1]
+    const createCall = fetchSpy.mock.calls[0]
     expect(createCall[0]).toBe(`${PROJECTS_URL}/MES/issues`)
     expect(createCall[1].method).toBe('POST')
     expect(createCall[1].credentials).toBe('include')
@@ -250,35 +245,33 @@ describe('issuesApi', () => {
   })
 
   it('createIssue encodes the project key segment', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(
-        jsonResponse(
-          {
-            id: '11111111-1111-1111-1111-111111111111',
-            issueKey: 'M E-1',
-            projectKey: 'M E',
-            number: 1,
-            type: 'TASK',
-            title: 't',
-            description: null,
-            statusCode: 'TO_DO',
-            reporterId: '22222222-2222-2222-2222-222222222222',
-            assigneeId: null,
-            rank: 0,
-            archived: false,
-            version: 0,
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-          201,
-        ),
-      )
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          id: '11111111-1111-1111-1111-111111111111',
+          issueKey: 'M E-1',
+          projectKey: 'M E',
+          number: 1,
+          type: 'TASK',
+          title: 't',
+          description: null,
+          statusCode: 'TO_DO',
+          reporterId: '22222222-2222-2222-2222-222222222222',
+          assigneeId: null,
+          rank: 0,
+          archived: false,
+          version: 0,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+        201,
+      ),
+    )
 
     const { createIssue } = await loadModules()
     await createIssue('M E', { type: 'TASK', title: 't', description: null, assigneeId: null })
 
-    const createCall = fetchSpy.mock.calls[1]
+    const createCall = fetchSpy.mock.calls[0]
     expect(createCall[0]).toBe(`${PROJECTS_URL}/M%20E/issues`)
   })
 
@@ -300,9 +293,7 @@ describe('issuesApi', () => {
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-02T00:00:00Z',
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(updated))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(updated))
 
     const { updateIssue } = await loadModules()
     const result = await updateIssue('MES-1', {
@@ -313,12 +304,7 @@ describe('issuesApi', () => {
     })
 
     expect(result).toEqual(updated)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const patchCall = fetchSpy.mock.calls[1]
+    const patchCall = fetchSpy.mock.calls[0]
     expect(patchCall[0]).toBe(`${ISSUES_URL}/MES-1`)
     expect(patchCall[1].method).toBe('PATCH')
     expect(patchCall[1].headers).toMatchObject({
@@ -334,9 +320,7 @@ describe('issuesApi', () => {
   })
 
   it('updateIssue encodes the issue key segment', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({}))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({}))
     const { updateIssue } = await loadModules()
     await updateIssue('M E-1', {
       title: 't',
@@ -344,7 +328,7 @@ describe('issuesApi', () => {
       assigneeId: null,
       expectedVersion: 0,
     })
-    const patchCall = fetchSpy.mock.calls[1]
+    const patchCall = fetchSpy.mock.calls[0]
     expect(patchCall[0]).toBe(`${ISSUES_URL}/M%20E-1`)
   })
 
@@ -366,20 +350,13 @@ describe('issuesApi', () => {
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-03T00:00:00Z',
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(archived))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(archived))
 
     const { archiveIssue } = await loadModules()
     const result = await archiveIssue('MES-1', { expectedVersion: 0 })
 
     expect(result).toEqual(archived)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const archiveCall = fetchSpy.mock.calls[1]
+    const archiveCall = fetchSpy.mock.calls[0]
     expect(archiveCall[0]).toBe(`${ISSUES_URL}/MES-1/archive`)
     expect(archiveCall[1].method).toBe('POST')
     expect(archiveCall[1].headers).toMatchObject({
@@ -412,11 +389,9 @@ describe('issuesApi', () => {
   })
 
   it('converts a Problem Details mutation response into a typed ApiError', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(
-        problemResponse(409, 'VERSION_CONFLICT', 'backend conflict detail'),
-      )
+    fetchSpy.mockResolvedValueOnce(
+      problemResponse(409, 'VERSION_CONFLICT', 'backend conflict detail'),
+    )
 
     const { updateIssue, ApiError } = await loadModules()
     const error = await updateIssue('MES-1', {
@@ -436,30 +411,28 @@ describe('issuesApi', () => {
 
   it('never writes CSRF or session data to localStorage or sessionStorage', async () => {
     const storageSet = vi.spyOn(Storage.prototype, 'setItem')
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(
-        jsonResponse(
-          {
-            id: '11111111-1111-1111-1111-111111111111',
-            issueKey: 'MES-1',
-            projectKey: 'MES',
-            number: 1,
-            type: 'TASK',
-            title: 't',
-            description: null,
-            statusCode: 'TO_DO',
-            reporterId: '22222222-2222-2222-2222-222222222222',
-            assigneeId: null,
-            rank: 0,
-            archived: false,
-            version: 0,
-            createdAt: '2026-01-01T00:00:00Z',
-            updatedAt: '2026-01-01T00:00:00Z',
-          },
-          201,
-        ),
-      )
+    fetchSpy.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          id: '11111111-1111-1111-1111-111111111111',
+          issueKey: 'MES-1',
+          projectKey: 'MES',
+          number: 1,
+          type: 'TASK',
+          title: 't',
+          description: null,
+          statusCode: 'TO_DO',
+          reporterId: '22222222-2222-2222-2222-222222222222',
+          assigneeId: null,
+          rank: 0,
+          archived: false,
+          version: 0,
+          createdAt: '2026-01-01T00:00:00Z',
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+        201,
+      ),
+    )
 
     const { createIssue } = await loadModules()
     await createIssue('MES', { type: 'TASK', title: 't', description: null, assigneeId: null })
@@ -485,9 +458,7 @@ describe('issuesApi', () => {
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-02T00:00:00Z',
     }
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse(moved))
+    fetchSpy.mockResolvedValueOnce(jsonResponse(moved))
 
     const { moveIssue } = await loadModules()
     const result = await moveIssue('MES-1', {
@@ -498,12 +469,7 @@ describe('issuesApi', () => {
     })
 
     expect(result).toEqual(moved)
-    expect(fetchSpy).toHaveBeenNthCalledWith(
-      1,
-      CSRF_URL,
-      expect.objectContaining({ credentials: 'include' }),
-    )
-    const moveCall = fetchSpy.mock.calls[1]
+    const moveCall = fetchSpy.mock.calls[0]
     expect(moveCall[0]).toBe(`${ISSUES_URL}/MES-1/move`)
     expect(moveCall[1].method).toBe('PATCH')
     expect(moveCall[1].credentials).toBe('include')
@@ -520,9 +486,7 @@ describe('issuesApi', () => {
   })
 
   it('moveIssue encodes the issue key path segment', async () => {
-    fetchSpy
-      .mockResolvedValueOnce(csrfResponse('token-1'))
-      .mockResolvedValueOnce(jsonResponse({}))
+    fetchSpy.mockResolvedValueOnce(jsonResponse({}))
     const { moveIssue } = await loadModules()
     await moveIssue('M E-1', {
       targetStatusCode: 'DONE',
@@ -530,7 +494,7 @@ describe('issuesApi', () => {
       afterIssueKey: null,
       expectedVersion: 0,
     })
-    const moveCall = fetchSpy.mock.calls[1]
+    const moveCall = fetchSpy.mock.calls[0]
     expect(moveCall[0]).toBe(`${ISSUES_URL}/M%20E-1/move`)
   })
 })

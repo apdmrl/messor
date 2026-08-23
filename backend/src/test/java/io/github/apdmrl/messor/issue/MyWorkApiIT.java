@@ -95,7 +95,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		// An unassigned issue in a visible project must never appear.
 		createIssue(admin, keyA, "TASK", "Unassigned in A", null, null);
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(assignee.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(assignee.session(), assignee.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -132,7 +132,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		String mine = createIssue(admin, key, "STORY", "Mine", null, me.userId());
 		createIssue(admin, key, "STORY", "Theirs", null, other.userId());
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(me.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(me.session(), me.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -157,7 +157,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		// so this data is inserted directly to prove My Work still excludes it.
 		String hidden = insertDirectAssignedIssue(hiddenKey, member.userId(), "Hidden");
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -188,7 +188,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 				+ " (SELECT id FROM project WHERE key = ?) AND user_account_id = ?",
 				keyB, member.userId());
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -218,7 +218,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		String b = createIssue(otherLead, keyB, "STORY", "Admin assigned B",
 				null, admin.userId());
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -244,7 +244,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		jdbcTemplate.update("UPDATE issue SET archived = TRUE, version = version + 1"
 				+ " WHERE human_key = ?", archived);
 
-		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/my-work").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -266,8 +266,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 				+ " WHERE human_key = ?", archived);
 
 		MvcResult result = mockMvc.perform(get("/api/my-work")
-				.param("archive", "archived")
-				.cookie(member.session()))
+				.param("archive", "archived").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -294,8 +293,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 				+ " WHERE human_key = ?", archived);
 
 		MvcResult result = mockMvc.perform(get("/api/my-work")
-				.param("archive", "all")
-				.cookie(member.session()))
+				.param("archive", "all").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -327,8 +325,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Filter by project key only.
 		MvcResult byProject = mockMvc.perform(get("/api/my-work")
-				.param("project", keyA)
-				.cookie(member.session()))
+				.param("project", keyA).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode projBody = objectMapper.readTree(byProject.getResponse().getContentAsString());
@@ -339,8 +336,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Filter by type.
 		MvcResult byType = mockMvc.perform(get("/api/my-work")
-				.param("type", "BUG")
-				.cookie(member.session()))
+				.param("type", "BUG").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode typeBody = objectMapper.readTree(byType.getResponse().getContentAsString());
@@ -351,8 +347,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Filter by status.
 		MvcResult byStatus = mockMvc.perform(get("/api/my-work")
-				.param("status", "IN_PROGRESS")
-				.cookie(member.session()))
+				.param("status", "IN_PROGRESS").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode statusBody = objectMapper.readTree(byStatus.getResponse().getContentAsString());
@@ -364,8 +359,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		MvcResult combined = mockMvc.perform(get("/api/my-work")
 				.param("project", keyA)
 				.param("type", "BUG")
-				.param("status", "IN_PROGRESS")
-				.cookie(member.session()))
+				.param("status", "IN_PROGRESS").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode combinedBody = objectMapper
@@ -401,8 +395,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		for (int page = 0; page < 3; page++) {
 			MvcResult result = mockMvc.perform(get("/api/my-work")
 					.param("sort", "title,asc").param("page", String.valueOf(page))
-					.param("size", "1")
-					.cookie(member.session()))
+					.param("size", "1").cookie(member.session(), member.csrfCookie()))
 					.andExpect(status().isOk())
 					.andReturn();
 			JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -420,8 +413,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		for (int page = 0; page < 3; page++) {
 			MvcResult result = mockMvc.perform(get("/api/my-work")
 					.param("sort", "title,asc").param("page", String.valueOf(page))
-					.param("size", "1")
-					.cookie(member.session()))
+					.param("size", "1").cookie(member.session(), member.csrfCookie()))
 					.andExpect(status().isOk())
 					.andReturn();
 			JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -446,8 +438,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Page 0 size 2 by default number,asc → the first two issues.
 		MvcResult page0 = mockMvc.perform(get("/api/my-work")
-				.param("page", "0").param("size", "2")
-				.cookie(member.session()))
+				.param("page", "0").param("size", "2").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode p0 = objectMapper.readTree(page0.getResponse().getContentAsString());
@@ -458,8 +449,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		assertThat(p0.get("items").size()).isEqualTo(2);
 
 		MvcResult page2 = mockMvc.perform(get("/api/my-work")
-				.param("page", "2").param("size", "2")
-				.cookie(member.session()))
+				.param("page", "2").param("size", "2").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode p2 = objectMapper.readTree(page2.getResponse().getContentAsString());
@@ -481,8 +471,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Sort by title asc: deterministic and no duplicates across pages.
 		MvcResult titleAsc = mockMvc.perform(get("/api/my-work")
-				.param("sort", "title,asc")
-				.cookie(member.session()))
+				.param("sort", "title,asc").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(titleAsc.getResponse().getContentAsString());
@@ -504,23 +493,23 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		MvcResult negativePage = mockMvc.perform(get("/api/my-work")
-				.param("page", "-1").cookie(member.session()))
+				.param("page", "-1").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
 		assertNoInternalDetail(negativePage);
 
-		mockMvc.perform(get("/api/my-work").param("size", "0").cookie(member.session()))
+		mockMvc.perform(get("/api/my-work").param("size", "0").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(get("/api/my-work").param("size", "-5").cookie(member.session()))
+		mockMvc.perform(get("/api/my-work").param("size", "-5").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		MvcResult oversize = mockMvc.perform(get("/api/my-work")
-				.param("size", "101").cookie(member.session()))
+				.param("size", "101").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
@@ -537,8 +526,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Path injection attempt.
 		MvcResult pathInjection = mockMvc.perform(get("/api/my-work")
-				.param("sort", "number;select")
-				.cookie(member.session()))
+				.param("sort", "number;select").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
@@ -546,22 +534,19 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Unknown property must be rejected, never passed into the query.
 		MvcResult unknown = mockMvc.perform(get("/api/my-work")
-				.param("sort", "passwordHash,asc")
-				.cookie(member.session()))
+				.param("sort", "passwordHash,asc").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
 		assertNoInternalDetail(unknown);
 
 		// Bad direction.
-		mockMvc.perform(get("/api/my-work").param("sort", "title,up")
-				.cookie(member.session()))
+		mockMvc.perform(get("/api/my-work").param("sort", "title,up").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		// Malformed field,direction.
-		mockMvc.perform(get("/api/my-work").param("sort", "number")
-				.cookie(member.session()))
+		mockMvc.perform(get("/api/my-work").param("sort", "number").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 	}
@@ -581,8 +566,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// Attempting to select the victim by userId is rejected outright.
 		MvcResult userId = mockMvc.perform(get("/api/my-work")
-				.param("userId", victim.userId().toString())
-				.cookie(me.session()))
+				.param("userId", victim.userId().toString()).cookie(me.session(), me.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -590,8 +574,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(userId);
 
 		MvcResult assigneeId = mockMvc.perform(get("/api/my-work")
-				.param("assigneeId", victim.userId().toString())
-				.cookie(me.session()))
+				.param("assigneeId", victim.userId().toString()).cookie(me.session(), me.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
@@ -599,8 +582,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// The generic assignee alias is also rejected.
 		MvcResult assignee = mockMvc.perform(get("/api/my-work")
-				.param("assignee", victim.userId().toString())
-				.cookie(me.session()))
+				.param("assignee", victim.userId().toString()).cookie(me.session(), me.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -608,7 +590,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(assignee);
 
 		// The victim's issues are never returned even in a non-rejected request.
-		MvcResult normal = mockMvc.perform(get("/api/my-work").cookie(me.session()))
+		MvcResult normal = mockMvc.perform(get("/api/my-work").cookie(me.session(), me.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(normal.getResponse().getContentAsString());
@@ -634,8 +616,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		MvcResult result = mockMvc.perform(get("/api/my-work")
-				.param("archive", "everything")
-				.cookie(member.session()))
+				.param("archive", "everything").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -653,16 +634,14 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 		// An unknown type value must be rejected, never coerced or reflected.
 		MvcResult badType = mockMvc.perform(get("/api/my-work")
-				.param("type", "EPIC")
-				.cookie(member.session()))
+				.param("type", "EPIC").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andReturn();
 		assertNoInternalDetail(badType);
 
 		// An unknown status code yields an empty result, never an error.
-		mockMvc.perform(get("/api/my-work").param("status", "NOPE")
-				.cookie(member.session()))
+		mockMvc.perform(get("/api/my-work").param("status", "NOPE").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.totalItems").value(0));
 	}
@@ -759,8 +738,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 
 	private String createProject(LoginSession session, String key, String name)
 			throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -776,8 +754,7 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 			String title, String description, UUID assigneeId) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -805,33 +782,25 @@ class MyWorkApiIT extends PostgresIntegrationTestSupport {
 				email, passwordEncoder.encode(password), "Ada", "Lovelace", role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper
-				.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(account.getId(), postLoginSession,
-				csrfAfterBody.get("headerName").asText(), csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader,
-			String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 }

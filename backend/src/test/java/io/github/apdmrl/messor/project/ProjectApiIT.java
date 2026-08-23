@@ -68,8 +68,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectNormalizesKeyAndDerivesCreatorFromPrincipal() throws Exception {
 		LoginSession admin = login("create-admin@example.com", UserRole.ORG_ADMIN);
 
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -120,8 +119,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithDuplicateKeyReturns409AndLeavesNoPartialRows() throws Exception {
 		LoginSession admin = login("dup-admin@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -129,8 +127,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 						"""))
 				.andExpect(status().isCreated());
 
-		MvcResult dup = mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		MvcResult dup = mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -194,8 +191,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithoutCsrfReturns403() throws Exception {
 		LoginSession admin = login("csrf-admin@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"key":"CSRF01","name":"No csrf"}
@@ -210,8 +206,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("csrf-patch@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "CSRFP1", "Original");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"name":"Changed","expectedVersion":0}
@@ -228,7 +223,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 
 		LoginSession outsider = login("nonmember-user@example.com", UserRole.USER);
 
-		mockMvc.perform(get("/api/projects/{key}", key).cookie(outsider.session()))
+		mockMvc.perform(get("/api/projects/{key}", key).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
@@ -241,8 +236,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 
 		LoginSession outsider = login("nonmember-patch-user@example.com", UserRole.USER);
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(outsider.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -261,7 +255,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("member-read-user@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(get("/api/projects/{key}", key).cookie(member.session()))
+		mockMvc.perform(get("/api/projects/{key}", key).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.key").value("MEMBR1"))
 				.andExpect(jsonPath("$.currentUserRole").value("MEMBER"));
@@ -275,7 +269,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("viewer-read-user@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(get("/api/projects/{key}", key).cookie(viewer.session()))
+		mockMvc.perform(get("/api/projects/{key}", key).cookie(viewer.session(), viewer.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.currentUserRole").value("VIEWER"));
 	}
@@ -288,8 +282,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("member-patch-user@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -308,8 +301,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("viewer-patch-user@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(viewer.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -328,8 +320,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession lead = login("lead-patch-user@example.com", UserRole.USER);
 		addMember(key, lead.userId(), "PROJECT_LEAD");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(lead.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -346,12 +337,11 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("orgadmin-all@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ORGAD1", "Admin project");
 
-		mockMvc.perform(get("/api/projects/{key}", key).cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.currentUserRole").value("PROJECT_LEAD"));
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -370,13 +360,13 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("list-member@example.com", UserRole.USER);
 		addMember("LISTA1", member.userId(), "MEMBER");
 
-		MvcResult adminList = mockMvc.perform(get("/api/projects").cookie(admin.session()))
+		MvcResult adminList = mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode adminBody = objectMapper.readTree(adminList.getResponse().getContentAsString());
 		assertThat(adminBody.get("totalItems").asInt()).isEqualTo(2);
 
-		MvcResult memberList = mockMvc.perform(get("/api/projects").cookie(member.session()))
+		MvcResult memberList = mockMvc.perform(get("/api/projects").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode memberBody = objectMapper.readTree(memberList.getResponse().getContentAsString());
@@ -390,8 +380,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithInvalidKeyReturns400() throws Exception {
 		LoginSession admin = login("invalid-key@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -406,8 +395,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithBlankNameReturns400() throws Exception {
 		LoginSession admin = login("blank-name@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -422,8 +410,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithTooLongKeyReturns400() throws Exception {
 		LoginSession admin = login("long-key@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -439,8 +426,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("stale-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "STALE1", "Original");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -448,8 +434,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 						"""))
 				.andExpect(status().isOk());
 
-		MvcResult stale = mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		MvcResult stale = mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -469,8 +454,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("immutable-key@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "IMMUT1", "Original");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -485,8 +469,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("neg-version@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "NEGV01", "Original");
 
-		mockMvc.perform(patch("/api/projects/{key}", key)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -501,22 +484,22 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void listProjectsRejectsInvalidPageSizeAndSort() throws Exception {
 		LoginSession admin = login("list-bounds@example.com", UserRole.ORG_ADMIN);
 
-		mockMvc.perform(get("/api/projects").cookie(admin.session()).param("size", "0"))
+		mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie()).param("size", "0"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(get("/api/projects").cookie(admin.session()).param("size", "101"))
+		mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie()).param("size", "101"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(get("/api/projects").cookie(admin.session()).param("page", "-1"))
+		mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie()).param("page", "-1"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(get("/api/projects").cookie(admin.session()).param("sort", "passwordHash"))
+		mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie()).param("sort", "passwordHash"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
@@ -529,8 +512,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		createProject(admin, "PAGE02", "Two");
 		createProject(admin, "PAGE03", "Three");
 
-		MvcResult result = mockMvc.perform(get("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.param("page", "0")
 				.param("size", "2")
 				.param("sort", "key,asc"))
@@ -551,8 +533,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void errorResponsesNeverLeakInternalDetails() throws Exception {
 		LoginSession admin = login("leak-admin@example.com", UserRole.ORG_ADMIN);
 
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -570,8 +551,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void createProjectWithMalformedJsonReturns400ValidationFailed() throws Exception {
 		LoginSession admin = login("malformed-json@example.com", UserRole.ORG_ADMIN);
 
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -593,8 +573,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void listProjectsRejectsNonNumericPageReturns400() throws Exception {
 		LoginSession admin = login("bad-page@example.com", UserRole.ORG_ADMIN);
 
-		MvcResult result = mockMvc.perform(get("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(get("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.param("page", "abc"))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
@@ -609,8 +588,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	void unsupportedProjectHttpMethodReturns405MethodNotAllowed() throws Exception {
 		LoginSession admin = login("bad-method@example.com", UserRole.ORG_ADMIN);
 
-		MvcResult result = mockMvc.perform(delete("/api/projects")
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(delete("/api/projects").cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken()))
 				.andExpect(status().isMethodNotAllowed())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
@@ -624,8 +602,7 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 	// --- Helpers ---
 
 	private String createProject(LoginSession session, String key, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -657,32 +634,24 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 				role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(
-				account.getId(),
-				postLoginSession,
-				csrfAfterBody.get("headerName").asText(),
-				csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
 	private JsonNode problemBody(MvcResult result) throws Exception {
@@ -691,7 +660,6 @@ class ProjectApiIT extends PostgresIntegrationTestSupport {
 		return objectMapper.readTree(result.getResponse().getContentAsString());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader, String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 
 }

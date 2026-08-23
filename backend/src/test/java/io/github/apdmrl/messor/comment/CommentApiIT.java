@@ -78,8 +78,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, viewer.userId(), "VIEWER");
 
 		for (LoginSession session : List.of(admin, member, viewer)) {
-			mockMvc.perform(get("/api/issues/{key}/comments", issueKey)
-					.cookie(session.session()))
+			mockMvc.perform(get("/api/issues/{key}/comments", issueKey).cookie(session.session(), session.csrfCookie()))
 					.andExpect(status().isOk())
 					.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 					.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -98,8 +97,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		createComment(admin, issueKey, "second");
 		createComment(admin, issueKey, "third");
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -120,8 +118,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String secondId = createComment(admin, issueKey, "second");
 		createComment(admin, issueKey, "third");
 
-		MvcResult del = mockMvc.perform(delete("/api/comments/{id}", secondId)
-				.cookie(admin.session())
+		MvcResult del = mockMvc.perform(delete("/api/comments/{id}", secondId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isOk())
@@ -131,8 +128,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		assertThat(deleted.has("body")).isTrue();
 		assertThat(deleted.get("body").isNull()).isTrue();
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -150,8 +146,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Hidden", null, null);
 
 		LoginSession outsider = login("comments-outsider@example.com", UserRole.USER);
-		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey)
-				.cookie(outsider.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{key}/comments", issueKey).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -162,8 +157,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 	@Test
 	void unknownIssueListingReturnsNotFound() throws Exception {
 		LoginSession admin = login("comments-unk-admin@example.com", UserRole.ORG_ADMIN);
-		MvcResult result = mockMvc.perform(get("/api/issues/UNK-9/comments")
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/UNK-9/comments").cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -189,8 +183,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		for (LoginSession session : List.of(admin, member)) {
-			MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-					.cookie(session.session())
+			MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(session.session(), session.csrfCookie())
 					.contentType(MediaType.APPLICATION_JSON)
 					.header(session.csrfHeader(), session.csrfToken())
 					.content("""
@@ -218,8 +211,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("comments-derived-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -239,8 +231,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("comments-viewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -260,8 +251,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Hidden", null, null);
 		LoginSession outsider = login("comments-nc-out@example.com", UserRole.USER);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(outsider.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -280,8 +270,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "CMC5", "Validation project");
 		String issueKey = createIssue(admin, key, "TASK", "Validation", null, null);
 
-		MvcResult blank = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult blank = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -292,8 +281,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				.andReturn();
 		assertNoInternalDetail(blank);
 
-		MvcResult whitespace = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult whitespace = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -305,8 +293,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(whitespace);
 
 		String tooLong = "x".repeat(5001);
-		MvcResult oversize = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult oversize = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -317,8 +304,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				.andReturn();
 		assertNoInternalDetail(oversize);
 
-		MvcResult malformed = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult malformed = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("not-json"))
@@ -336,8 +322,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "CMC6", "Whitespace project");
 		String issueKey = createIssue(admin, key, "TASK", "Whitespace", null, null);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -355,16 +340,14 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "CMC7", "Csrf project");
 		String issueKey = createIssue(admin, key, "TASK", "Csrf", null, null);
 
-		mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"body":"no token"}
 						"""))
 				.andExpect(status().isForbidden());
 
-		mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), "bogus-token")
 				.content("""
@@ -382,8 +365,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Will archive", null, null);
 		archiveIssue(admin, issueKey);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -404,8 +386,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Update", null, null);
 		String commentId = createComment(admin, issueKey, "original");
 
-		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -435,8 +416,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				  AND user_account_id = ?
 				""", key, member.userId());
 
-		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -459,8 +439,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, memberB.userId(), "MEMBER");
 		String commentId = createComment(memberA, issueKey, "from A");
 
-		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(memberB.session())
+		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(memberB.session(), memberB.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(memberB.csrfHeader(), memberB.csrfToken())
 				.content("""
@@ -482,8 +461,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String commentId = createComment(member, issueKey, "from member");
 
 		// The ORG_ADMIN is a non-author and must not edit the member's text.
-		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -503,8 +481,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String commentId = createComment(admin, issueKey, "v0");
 
 		// First edit succeeds (v0 -> v1).
-		mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -513,8 +490,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isOk());
 
 		// Second edit with the stale v0 must conflict.
-		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -534,8 +510,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String commentId = createComment(admin, issueKey, "to delete");
 		deleteComment(admin, commentId, 0);
 
-		MvcResult deleted = mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult deleted = mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -547,8 +522,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(deleted);
 
 		MvcResult unknown = mockMvc.perform(patch("/api/comments/{id}",
-				UUID.randomUUID())
-				.cookie(admin.session())
+				UUID.randomUUID()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -567,8 +541,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Update neg", null, null);
 		String commentId = createComment(admin, issueKey, "v0");
 
-		mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -577,8 +550,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -587,8 +559,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
-		mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"body":"no csrf","expectedVersion":0}
@@ -605,8 +576,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Delete", null, null);
 		String commentId = createComment(admin, issueKey, "remove me");
 
-		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isOk())
@@ -630,8 +600,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String commentId = createComment(member, issueKey, "member words");
 
 		// ORG_ADMIN moderates.
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isOk())
@@ -649,8 +618,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, memberB.userId(), "MEMBER");
 		String commentId = createComment(memberA, issueKey, "A's comment");
 
-		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(memberB.session())
+		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(memberB.session(), memberB.csrfCookie())
 				.header(memberB.csrfHeader(), memberB.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isForbidden())
@@ -668,8 +636,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("comments-vd@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(viewer.session(), viewer.csrfCookie())
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isForbidden())
@@ -687,8 +654,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 
 		// Bump the version via an edit (v0 -> v1) so the comment stays active but
 		// a delete carrying the old v0 must conflict.
-		mockMvc.perform(patch("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -696,8 +662,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 						"""))
 				.andExpect(status().isOk());
 
-		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isConflict())
@@ -713,15 +678,13 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Repeat delete", null, null);
 		String commentId = createComment(admin, issueKey, "remove");
 
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isOk());
 
 		// Repeated deletion with the latest version returns COMMENT_NOT_FOUND.
-		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "1"))
 				.andExpect(status().isNotFound())
@@ -737,13 +700,11 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Delete csrf", null, null);
 		String commentId = createComment(admin, issueKey, "csrf");
 
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isForbidden());
 
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), "bogus")
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isForbidden());
@@ -756,8 +717,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "TASK", "Delete negative", null, null);
 		String commentId = createComment(admin, issueKey, "negative");
 
-		MvcResult negative = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult negative = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "-1"))
 				.andExpect(status().isBadRequest())
@@ -767,8 +727,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 
 		// A missing expectedVersion is bound as absent (not a framework binding
 		// error) and rejected with the same exact RFC 9457 VALIDATION_FAILED code.
-		MvcResult missing = mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		MvcResult missing = mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken()))
 				.andExpect(status().isBadRequest())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
@@ -777,8 +736,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(missing);
 
 		// Zero is a valid version and the delete proceeds.
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.queryParam("expectedVersion", "0"))
 				.andExpect(status().isOk());
@@ -847,8 +805,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	private String createProject(LoginSession session, String key, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -864,8 +821,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 			String title, String description, UUID assigneeId) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -878,8 +834,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	private void archiveIssue(LoginSession session, String issueKey) throws Exception {
-		mockMvc.perform(post("/api/issues/{key}/archive", issueKey)
-				.cookie(session.session())
+		mockMvc.perform(post("/api/issues/{key}/archive", issueKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -890,8 +845,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 
 	private String createComment(LoginSession session, String issueKey, String body)
 			throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{key}/comments", issueKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -905,8 +859,7 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 
 	private void deleteComment(LoginSession session, String commentId, long expectedVersion)
 			throws Exception {
-		mockMvc.perform(delete("/api/comments/{id}", commentId)
-				.cookie(session.session())
+		mockMvc.perform(delete("/api/comments/{id}", commentId).cookie(session.session(), session.csrfCookie())
 				.header(session.csrfHeader(), session.csrfToken())
 				.queryParam("expectedVersion", Long.toString(expectedVersion)))
 				.andExpect(status().isOk());
@@ -930,34 +883,25 @@ class CommentApiIT extends PostgresIntegrationTestSupport {
 				role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(
-				account.getId(),
-				postLoginSession,
-				csrfAfterBody.get("headerName").asText(),
-				csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader, String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 }
