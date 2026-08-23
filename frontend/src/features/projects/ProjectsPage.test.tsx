@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ApiError } from '../../app/apiClient'
+import { SessionContext } from '../../app/session'
+import type { UserSummary } from '../auth/types'
 import { ProjectsPage } from './ProjectsPage'
 import type { PageResponse, ProjectDetail, ProjectSummary } from './types'
 
@@ -65,18 +73,43 @@ import { createProject, listProjects } from './projectsApi'
 const listProjectsMock = listProjects as Mock
 const createProjectMock = createProject as Mock
 
-function renderProjectsPage(): void {
+function renderProjectsPage(role: 'ORG_ADMIN' | 'USER' = 'ORG_ADMIN'): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+  const sessionValue = {
+    session: {
+      status: 'authenticated' as const,
+      user: {
+        id: role === 'ORG_ADMIN' ? 'admin-user-id' : 'member-user-id',
+        email:
+          role === 'ORG_ADMIN'
+            ? 'admin@demo.messor.app'
+            : 'member@demo.messor.app',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        role: role as UserSummary['role'],
+      },
+    },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={['/projects']}>
-        <Routes>
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectKey/board" element={<div>BOARD</div>} />
-        </Routes>
-      </MemoryRouter>
+      <SessionContext.Provider value={sessionValue}>
+        <MemoryRouter initialEntries={['/projects']}>
+          <Routes>
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route
+              path="/projects/:projectKey/board"
+              element={<div>BOARD</div>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </SessionContext.Provider>
     </QueryClientProvider>,
   )
 }
@@ -98,9 +131,7 @@ describe('ProjectsPage', () => {
       )
       renderProjectsPage()
 
-      expect(
-        screen.getByRole('status', { name: '' }),
-      ).toBeInTheDocument()
+      expect(screen.getByRole('status', { name: '' })).toBeInTheDocument()
       expect(screen.getByText('Projeler yükleniyor…')).toBeInTheDocument()
     })
 
@@ -151,15 +182,106 @@ describe('ProjectsPage', () => {
       })
       renderProjectsPage()
 
-      await screen.findByText(
-        '<img src=x onerror="window.__xss=1">Messor',
-      )
+      await screen.findByText('<img src=x onerror="window.__xss=1">Messor')
       expect(
         screen.getByText('<script>window.__xss=2</script>'),
       ).toBeInTheDocument()
       expect(document.querySelector('img')).toBeNull()
       expect(document.querySelector('script')).toBeNull()
       expect((window as unknown as { __xss?: number }).__xss).toBeUndefined()
+    })
+  })
+
+  describe('overview summary action links', () => {
+    it('routes each project card to its board and settings surfaces', async () => {
+      listProjectsMock.mockResolvedValue(populatedPage)
+      renderProjectsPage()
+
+      await screen.findByText('Messor')
+
+      const cards = screen.getAllByRole('listitem')
+      const assertCardLinks = (
+        card: HTMLElement,
+        key: string,
+        name: string,
+      ): void => {
+        // The summary card itself opens the board; settings is a secondary link.
+        expect(
+          within(card).getByRole('link', { name: new RegExp(name) }),
+        ).toHaveAttribute('href', `/projects/${key}/board`)
+        expect(
+          within(card).getByRole('link', { name: 'Ayarlar' }),
+        ).toHaveAttribute('href', `/projects/${key}/settings`)
+      }
+
+      const messorCard = cards.find((card) => within(card).queryByText('MES'))
+      expect(messorCard).toBeDefined()
+      if (messorCard) {
+        assertCardLinks(messorCard, 'MES', 'Messor')
+      }
+
+      const alphaCard = cards.find((card) => within(card).queryByText('ALPHA'))
+      expect(alphaCard).toBeDefined()
+      if (alphaCard) {
+        assertCardLinks(alphaCard, 'ALPHA', 'Alpha')
+      }
+    })
+  })
+
+  describe('create authorization gating', () => {
+    it('shows the create form only to an ORG_ADMIN', async () => {
+      listProjectsMock.mockResolvedValue(populatedPage)
+      renderProjectsPage('ORG_ADMIN')
+
+      await screen.findByText('Messor')
+      expect(
+        screen.getByRole('heading', { name: 'Yeni proje' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Proje oluştur' }),
+      ).toBeInTheDocument()
+    })
+
+    it('hides the create form from a non-admin user', async () => {
+      listProjectsMock.mockResolvedValue(populatedPage)
+      renderProjectsPage('USER')
+
+      await screen.findByText('Messor')
+      expect(
+        screen.queryByRole('heading', { name: 'Yeni proje' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Proje oluştur' }),
+      ).not.toBeInTheDocument()
+      // Existing project cards still render for non-admins.
+      expect(screen.getByText('MES')).toBeInTheDocument()
+      expect(screen.getByText('Üye')).toBeInTheDocument()
+    })
+
+    it('shows the admin create-first empty state to an ORG_ADMIN', async () => {
+      listProjectsMock.mockResolvedValue(emptyPage)
+      renderProjectsPage('ORG_ADMIN')
+
+      expect(
+        await screen.findByText('Henüz proje yok. İlk projeni oluştur.'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a tailored empty state to a non-admin with no projects', async () => {
+      listProjectsMock.mockResolvedValue(emptyPage)
+      renderProjectsPage('USER')
+
+      expect(await screen.findByText('Henüz proje yok')).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          'Sana atanmış bir proje bulunmuyor. Yeni projeler yalnızca ' +
+            'organizasyon yöneticileri tarafından oluşturulur.',
+        ),
+      ).toBeInTheDocument()
+      // The admin-oriented create prompt must not reach a non-admin.
+      expect(
+        screen.queryByText('Henüz proje yok. İlk projeni oluştur.'),
+      ).not.toBeInTheDocument()
     })
   })
 
@@ -188,14 +310,13 @@ describe('ProjectsPage', () => {
       await screen.findByText('Henüz proje yok. İlk projeni oluştur.')
 
       await user.type(screen.getByLabelText('Proje anahtarı'), 'ABCDEFGHIJK')
-      await user.type(
-        screen.getByLabelText('Proje adı'),
-        'x'.repeat(121),
-      )
+      await user.type(screen.getByLabelText('Proje adı'), 'x'.repeat(121))
       await user.click(screen.getByRole('button', { name: 'Proje oluştur' }))
 
       expect(
-        await screen.findByText('Proje anahtarı en fazla 10 karakter olabilir.'),
+        await screen.findByText(
+          'Proje anahtarı en fazla 10 karakter olabilir.',
+        ),
       ).toBeInTheDocument()
       expect(
         screen.getByText('Proje adı en fazla 120 karakter olabilir.'),
