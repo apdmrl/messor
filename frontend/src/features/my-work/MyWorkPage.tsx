@@ -246,8 +246,13 @@ export function MyWorkPage(): ReactElement {
     const items = myWorkQuery.data?.items ?? []
     const count = (code: string): number =>
       items.reduce((n, i) => (i.statusCode === code ? n + 1 : n), 0)
+    // "Active projects" counts only non-completed work on this page, so a
+    // project with nothing but completed issues does not appear as active.
     const perProject = new Map<string, number>()
     for (const issue of items) {
+      if (issue.statusCode === COMPLETED_CODE) {
+        continue
+      }
       perProject.set(issue.projectKey, (perProject.get(issue.projectKey) ?? 0) + 1)
     }
     const projects = [...perProject.entries()]

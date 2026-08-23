@@ -424,12 +424,31 @@ describe('MyWorkPage', () => {
     expect(within(rail).queryByText('3')).toBeNull()
   })
 
+
   it('keeps the workload rail page-scoped when a filter is active', async () => {
     listMyWorkMock.mockResolvedValue(pageWithIssues)
     renderMyWork('/my-work?status=IN_PROGRESS')
 
     const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
     expect(within(rail).getByText('Bu sayfadaki işler.')).toBeInTheDocument()
+  })
+
+  it('omits completed-only projects from the active-work bars', async () => {
+    listMyWorkMock.mockResolvedValue({
+      items: [makeIssue({ statusCode: 'DONE' })],
+      page: 0,
+      size: 20,
+      totalItems: 1,
+      totalPages: 1,
+    })
+    renderMyWork()
+
+    const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
+    // Completed count is still shown...
+    expect(within(rail).getByText('Tamamlanan')).toBeInTheDocument()
+    // ...but no project appears in the active-work bars.
+    expect(within(rail).queryByText('Aktif projeler')).toBeNull()
+    expect(within(rail).queryByText('Alpha Project')).toBeNull()
   })
 
   it('collapses the rail so the column contracts while staying reachable', async () => {
