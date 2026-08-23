@@ -396,11 +396,16 @@
   gap: 1rem;
 }
 
-.settings-page__section-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+.settings-page__members-link {
+  color: var(--color-primary);
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.settings-page__members-link:hover,
+.settings-page__members-link:focus-visible {
+  text-decoration: underline;
 }
 
 .settings-page__section-heading {

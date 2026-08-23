@@ -422,6 +422,22 @@ describe('ProjectSettingsPage', () => {
         within(dangerPanel).queryByRole('button'),
       ).not.toBeInTheDocument()
     })
+
+    it('links the members section to the dedicated members page', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+      await openMembersTab(user)
+
+      const membersPanel = await screen.findByRole('tabpanel', {
+        name: 'Üyeler ve erişim',
+      })
+      const link = within(membersPanel).getByRole('link', {
+        name: 'Üyeleri görüntüle',
+      })
+      expect(link).toHaveAttribute('href', '/projects/MES/members')
+    })
   })
 
   describe('role-aware controls', () => {

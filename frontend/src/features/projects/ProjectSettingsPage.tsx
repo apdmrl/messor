@@ -16,13 +16,9 @@ import type {
   ProjectMember,
   ProjectRole,
 } from './types'
+import { MEMBERS_ROUTE } from './MembersPage'
+import { MEMBERS_QUERY_KEY } from './membershipApi'
 import './ProjectSettingsPage.css'
-
-const MEMBERS_QUERY_KEY = (projectKey: string): readonly string[] => [
-  'projects',
-  projectKey,
-  'members',
-]
 
 const DEMO_EMAILS = ['admin@demo.messor.app', 'member@demo.messor.app'] as const
 const ROLES: ProjectRole[] = ['PROJECT_LEAD', 'MEMBER', 'VIEWER']
@@ -362,6 +358,12 @@ export function ProjectSettingsPage(): ReactElement {
             <h3 id="members-heading" className="settings-page__section-heading">
               Üyeler ve erişim
             </h3>
+            <Link
+              className="settings-page__members-link"
+              to={MEMBERS_ROUTE(key)}
+            >
+              Üyeleri görüntüle
+            </Link>
           </div>
 
           {!isLead && (
