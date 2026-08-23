@@ -20,6 +20,22 @@
   scrollbar-color: var(--color-border-strong) transparent;
 }
 
+.kanban-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+  min-width: 17rem;
+  max-width: 17rem;
+  flex: 0 0 17rem;
+  min-block-size: 0;
+  block-size: 100%;
+  padding: var(--space-4, 0.875rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-tint);
+  scroll-snap-align: start;
+}
+
 /* The column that is the live keyboard move target. */
 .kanban-column--target {
   outline: 2px solid var(--color-primary);
