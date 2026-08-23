@@ -45,6 +45,8 @@ color: rgb(var(--messor-text-primary));
 
 Shared shell components expose ordinary React props and render semantic landmarks; feature workers should consume shell/page primitives without introducing parallel navigation or color systems.
 
+### Task 1: Build semantic tokens and Burrow Instrument shell
+
 **Files:**
 - Create: `frontend/src/app/theme.ts`
 - Modify: `frontend/src/index.css`
