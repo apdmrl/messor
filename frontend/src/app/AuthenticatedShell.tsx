@@ -1,8 +1,13 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import type { ReactElement } from 'react'
+import { useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactElement,
+} from 'react'
 import { useSession } from './session'
 import type { UserSummary } from '../features/auth/types'
+import { getProject } from '../features/projects/projectsApi'
 import './AuthenticatedShell.css'
 
 const LOGOUT_ERROR_MESSAGE = 'Çıkış yapılamadı. Lütfen tekrar deneyin.'
@@ -66,9 +71,41 @@ function IconChevron(): ReactElement {
   )
 }
 
+function ProjectNavLink({
+  to,
+  label,
+}: {
+  to: string
+  label: string
+}): ReactElement {
+  return (
+    <NavLink to={to} className={navLinkClass} aria-label={label}>
+      <span className="bi-rail__project-mark" aria-hidden="true" />
+      <span className="bi-rail__label">{label}</span>
+    </NavLink>
+  )
+}
+
 export function AuthenticatedShell(): ReactElement {
   const { session, handleLogout, logoutPending, logoutError } = useSession()
+  const location = useLocation()
   const [railCollapsed, setRailCollapsed] = useState(false)
+  const accountRef = useRef<HTMLDetailsElement>(null)
+  const accountSummaryRef = useRef<HTMLElement>(null)
+
+  const projectKey = /^\/projects\/([^/]+)/.exec(location.pathname)?.[1] ?? null
+
+  const projectQuery = useQuery({
+    queryKey: ['projects', projectKey],
+    queryFn: () => getProject(projectKey as string),
+    enabled: projectKey !== null,
+  })
+
+  // Frontend authorization is presentation-only: project settings and members
+  // are hidden unless the current user holds a managing role; the backend
+  // remains authoritative. Fails closed while the project is unknown.
+  const canManageProject =
+    projectQuery.data?.currentUserRole === 'PROJECT_LEAD'
 
   if (session.status !== 'authenticated') {
     return <Outlet />
@@ -79,6 +116,14 @@ export function AuthenticatedShell(): ReactElement {
   const railToggleLabel = railExpanded
     ? 'Proje çubuğunu daralt'
     : 'Proje çubuğunu genişlet'
+
+  function handleAccountKeyDown(event: ReactKeyboardEvent): void {
+    if (event.key === 'Escape' && accountRef.current?.open) {
+      event.preventDefault()
+      accountRef.current.open = false
+      accountSummaryRef.current?.focus()
+    }
+  }
 
   return (
     <div className="bi-shell">
@@ -118,8 +163,12 @@ export function AuthenticatedShell(): ReactElement {
           </button>
         </div>
 
-        <details className="bi-account">
-          <summary className="bi-account__summary">
+        <details
+          className="bi-account"
+          ref={accountRef}
+          onKeyDown={handleAccountKeyDown}
+        >
+          <summary className="bi-account__summary" ref={accountSummaryRef}>
             <span className="bi-account__avatar" aria-hidden="true">
               {user.firstName.charAt(0)}
             </span>
@@ -166,22 +215,51 @@ export function AuthenticatedShell(): ReactElement {
             <IconChevron />
           </button>
 
-          <NavLink
-            to="/my-work"
-            className={navLinkClass}
-            aria-label="Görevlerim"
-          >
+          <NavLink to="/my-work" className={navLinkClass} aria-label="Görevlerim">
             <IconWork />
             <span className="bi-rail__label">Görevlerim</span>
           </NavLink>
           <NavLink
             to="/projects"
+            end
             className={navLinkClass}
             aria-label="Projeler"
           >
             <IconProjects />
             <span className="bi-rail__label">Projeler</span>
           </NavLink>
+
+          {projectKey !== null && (
+            <div className="bi-rail__group">
+              <span className="bi-rail__group-label">
+                {projectQuery.data?.name ?? 'Proje'}
+              </span>
+              <ProjectNavLink
+                to={`/projects/${projectKey}/board`}
+                label="Pano"
+              />
+              <ProjectNavLink
+                to={`/projects/${projectKey}/issues`}
+                label="İşler"
+              />
+              <ProjectNavLink
+                to={`/projects/${projectKey}/activity`}
+                label="Aktivite"
+              />
+              {canManageProject && (
+                <ProjectNavLink
+                  to={`/projects/${projectKey}/members`}
+                  label="Üyeler"
+                />
+              )}
+              {canManageProject && (
+                <ProjectNavLink
+                  to={`/projects/${projectKey}/settings`}
+                  label="Ayarlar"
+                />
+              )}
+            </div>
+          )}
         </nav>
 
         <main className="bi-content">

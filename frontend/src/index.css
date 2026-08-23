@@ -264,3 +264,30 @@ ol {
 .bi-tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================
+   Dark-theme mapping for legacy --color-* tokens
+   Feature surfaces still consume the legacy palette; remap it to the
+   Burrow Instrument dark scheme so every currently rendered surface
+   is coherent under [data-theme="dark"]. Aliases (--accent, --surface,
+   --text, etc.) reference these vars and inherit the mapping.
+   ============================================================ */
+
+[data-theme='dark'] {
+  --color-bg: #151513;
+  --color-surface: #1d1c18;
+  --color-surface-raised: #25231e;
+  --color-surface-tint: #25231e;
+  --color-ink: #f5f1e8;
+  --color-muted: #a19a8d;
+  --color-muted-strong: #c5bfb2;
+  --color-primary: #d39a3e;
+  --color-primary-strong: #e8c07a;
+  --color-accent: #d39a3e;
+  --color-danger: #e2765d;
+  --color-success: #8fa27e;
+  --color-warning: #d7a85b;
+  --color-border: #3c3932;
+  --color-border-strong: #625b4e;
+  --color-focus: #d39a3e;
+}

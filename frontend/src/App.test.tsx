@@ -538,11 +538,13 @@ describe('theme resolution', () => {
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')
   })
 
-  it('applies the dark theme to the document root when the OS prefers dark', () => {
+  it('applies the theme without writing any web storage', () => {
+    const storageSet = vi.spyOn(Storage.prototype, 'setItem')
     stubMatchMedia(true)
     getCurrentUserMock.mockResolvedValue(adminUser)
     renderAt('/projects')
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
+    expect(storageSet).not.toHaveBeenCalled()
   })
 })

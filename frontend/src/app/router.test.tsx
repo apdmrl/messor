@@ -11,6 +11,7 @@ import type {
   PageResponse,
   ProjectDetail,
   ProjectMember,
+  ProjectRole,
   ProjectSummary,
 } from '../features/projects/types'
 import type { Issue, IssuePage } from '../features/issues/types'
@@ -164,7 +165,7 @@ describe('router', () => {
       await screen.findByRole('heading', { name: 'Messor', level: 2 }),
     ).toBeInTheDocument()
     expect(screen.getByText('MES')).toBeInTheDocument()
-    expect(screen.getByText('İşler')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'İşler' })).toBeInTheDocument()
   })
 
   it('renders the issue drawer for a direct /projects/:projectKey/issues/:issueKey load', async () => {
@@ -305,19 +306,77 @@ describe('authenticated shell', () => {
     ).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('collapses the project rail with keyboard activation', async () => {
+  it('closes the account menu on Escape and restores focus to the summary', async () => {
     const user = userEvent.setup()
     renderRouterAt(authenticatedSession, ['/projects'])
     await screen.findByRole('heading', { name: 'Projeler', level: 2 })
 
-    const toggle = screen.getByRole('button', {
-      name: 'Proje çubuğunu daralt',
-    })
-    toggle.focus()
-    await user.keyboard('{Enter}')
+    const summary = screen
+      .getByText('Ada Lovelace')
+      .closest('summary') as HTMLElement
+    await user.click(summary)
 
+    const details = summary.closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(true)
+
+    await user.keyboard('{Escape}')
+
+    expect(details.open).toBe(false)
+    expect(summary).toHaveFocus()
+  })
+
+  function renderProject(role: ProjectRole): void {
+    getProjectMock.mockResolvedValue({ ...projectDetail, currentUserRole: role })
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+  }
+
+
+  it("renders project navigation with lead-only links for a project lead", async () => {
+    renderProject("PROJECT_LEAD")
+    await screen.findByRole("heading", { name: "Messor", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(within(rail).getByRole("link", { name: "Pano" })).toHaveAttribute(
+      "href",
+      "/projects/MES/board",
+    )
+    expect(within(rail).getByRole("link", { name: "İşler" })).toHaveAttribute(
+      "href",
+      "/projects/MES/issues",
+    )
     expect(
-      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
-    ).toHaveAttribute('aria-expanded', 'false')
+      within(rail).getByRole("link", { name: "Aktivite" }),
+    ).toHaveAttribute("href", "/projects/MES/activity")
+    expect(within(rail).getByRole("link", { name: "Üyeler" })).toHaveAttribute(
+      "href",
+      "/projects/MES/members",
+    )
+    expect(within(rail).getByRole("link", { name: "Ayarlar" })).toHaveAttribute(
+      "href",
+      "/projects/MES/settings",
+    )
+    expect(within(rail).getByRole("link", { name: "Pano" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    )
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).not.toHaveAttribute("aria-current")
+  })
+
+  it("hides lead-only project links for a project member", async () => {
+    renderProject("MEMBER")
+    await screen.findByRole("heading", { name: "Messor", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(within(rail).getByRole("link", { name: "Pano" })).toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Üyeler" }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Ayarlar" }),
+    ).not.toBeInTheDocument()
   })
 })

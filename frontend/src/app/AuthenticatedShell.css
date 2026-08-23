@@ -96,7 +96,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 0.5rem;
   cursor: pointer;
   list-style: none;
@@ -155,7 +155,7 @@
 }
 
 .bi-account__logout {
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 0.625rem;
   color: rgb(var(--messor-signal-danger));
   background: transparent;
@@ -213,7 +213,7 @@
   display: grid;
   place-items: center;
   width: 100%;
-  height: 32px;
+  height: 40px;
   margin-bottom: 0.25rem;
   color: rgb(var(--messor-text-secondary));
   background: transparent;
@@ -239,7 +239,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 0.5rem;
   color: rgb(var(--messor-text-secondary));
   font: inherit;
@@ -254,10 +254,87 @@
   background: rgb(var(--messor-surface-2));
 }
 
-.bi-rail__link--active {
-  color: rgb(var(--messor-signal-active));
-  background: rgb(var(--messor-signal-active-soft));
-  box-shadow: inset 2px 0 0 rgb(var(--messor-signal-active));
+.bi-rail__group {
+  display: grid;
+  gap: 0.125rem;
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgb(var(--messor-border-subtle));
+}
+
+.bi-rail__group-label {
+  padding: 0.25rem 0.5rem;
+  color: rgb(var(--messor-text-muted));
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bi-rail__project-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border: 1px solid rgb(var(--messor-border-strong));
+  border-radius: 1px;
+}
+
+.bi-rail__link--active .bi-rail__project-mark {
+  border-color: rgb(var(--messor-signal-active));
+  background: rgb(var(--messor-signal-active));
+}
+
+.bi-rail--collapsed .bi-rail__project-mark,
+.bi-rail--collapsed .bi-rail__group-label {
+  display: none;
+}
+
+.bi-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: clamp(1rem, 2vw, 1.5rem) clamp(1rem, 2.5vw, 2rem);
+}
+
+@media (max-width: 767px) {
+  /* Narrow fallback: the rail becomes an icon rail so content stays usable
+     and interactive targets remain at least 40px. */
+  .bi-rail {
+    width: 56px;
+  }
+
+  .bi-rail__label,
+  .bi-rail__group-label {
+    display: none;
+  }
+
+  .bi-rail__link,
+  .bi-rail__toggle {
+    justify-content: center;
+    padding: 0;
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .bi-topbar__context,
+  .bi-account__summary-text {
+    display: none;
+  }
+
+  .bi-topbar__action {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bi-rail,
+  .bi-rail__chevron {
+    transition: none;
+  }
 }
 
 .bi-rail__label {
