@@ -239,6 +239,8 @@ describe('MyWorkPage', () => {
     const user = userEvent.setup()
     renderMyWork('/my-work?page=2')
 
+    // Filters live behind the compact `Filtreler` disclosure until expanded.
+    await user.click(await screen.findByRole('button', { name: /Filtreler/ }))
     const type = await screen.findByLabelText('Tür')
     await user.selectOptions(type, 'BUG')
 
@@ -265,10 +267,13 @@ describe('MyWorkPage', () => {
 
   it('does not render an assignee filter selector', async () => {
     listMyWorkMock.mockResolvedValue(pageWithIssues)
+    const user = userEvent.setup()
     renderMyWork()
 
     await screen.findByText('First task')
-    // My Work is principal-scoped: there is no "Atanan" filter control.
+    // My Work is principal-scoped: there is no "Atanan" filter control, even
+    // once the filter panel is expanded.
+    await user.click(screen.getByRole('button', { name: /Filtreler/ }))
     expect(screen.queryByLabelText('Atanan')).toBeNull()
     expect(screen.queryByLabelText('Tüm atananlar')).toBeNull()
   })
@@ -299,7 +304,128 @@ describe('MyWorkPage', () => {
     }
     expect(lastCall.assignee).toBeNull()
     expect(lastCall.page).toBe(0)
-    // Canonicalization must not loop (listMyWork fired once).
     expect(listMyWorkMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('groups the queue into in-progress, queue, and completed sections', async () => {
+    listMyWorkMock.mockResolvedValue({
+      items: [
+        makeIssue({ issueKey: 'ALPHA-3', number: 3, statusCode: 'TO_DO' }),
+        makeIssue({ issueKey: 'ALPHA-2', number: 2, statusCode: 'DONE' }),
+        makeIssue(),
+      ],
+      page: 0,
+      size: 20,
+      totalItems: 3,
+      totalPages: 1,
+    })
+    renderMyWork()
+
+    // Each group heading carries its count as part of its accessible name.
+    expect(
+      await screen.findByRole('heading', { name: /Sürüyor\s*1/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /Kuyruk\s*1/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /Son tamamlananlar\s*1/ }),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('summary status preset filters to that status and resets the page', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    const user = userEvent.setup()
+    renderMyWork('/my-work?page=2')
+
+    await screen.findByText('First task')
+    await user.click(screen.getByRole('button', { name: 'Kuyruk' }))
+
+    await waitFor(() => {
+      const calls = listMyWorkMock.mock.calls
+      const last = calls[calls.length - 1][0] as { status: string | null; page: number }
+      expect(last.status).toBe('TO_DO')
+      expect(last.page).toBe(0)
+    })
+  })
+
+  it('summary recency preset applies a supported sort and resets the page', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    const user = userEvent.setup()
+    renderMyWork('/my-work?page=3')
+
+    await screen.findByText('First task')
+    await user.click(screen.getByRole('button', { name: 'Son güncellenen' }))
+
+    await waitFor(() => {
+      const calls = listMyWorkMock.mock.calls
+      const last = calls[calls.length - 1][0] as {
+        sort: { field: string; direction: string }
+        page: number
+      }
+      expect(last.sort.field).toBe('updatedAt')
+      expect(last.sort.direction).toBe('desc')
+      expect(last.page).toBe(0)
+    })
+  })
+
+  it('distinguishes no-results from no assignments when a filter is active', async () => {
+    listMyWorkMock.mockResolvedValue(emptyPage)
+    renderMyWork('/my-work?status=IN_PROGRESS')
+
+    expect(
+      await screen.findByText('Seçili filtrelerle eşleşen iş bulunamadı.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Sana atanmış iş bulunamadı.')).toBeNull()
+  })
+
+  it('renders the pending state while loading', async () => {
+    listMyWorkMock.mockReturnValue(new Promise<IssuePage>(() => {}))
+    renderMyWork()
+
+    expect(
+      await screen.findByText('Görevlerim yükleniyor…'),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the workload rail with counts and per-project numeric bars', async () => {
+    listMyWorkMock.mockResolvedValue({
+      items: [
+        makeIssue({ statusCode: 'IN_PROGRESS' }),
+        makeIssue({ issueKey: 'ALPHA-2', number: 2, statusCode: 'TO_DO' }),
+      ],
+      page: 0,
+      size: 20,
+      totalItems: 2,
+      totalPages: 1,
+    })
+    renderMyWork()
+
+    const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
+    expect(within(rail).getByText('Atanan')).toBeInTheDocument()
+    expect(within(rail).getByText('Sürüyor')).toBeInTheDocument()
+    expect(within(rail).getByText('Kuyruk')).toBeInTheDocument()
+    expect(within(rail).getByText('Tamamlanan')).toBeInTheDocument()
+    // Per-project active-work bar label and count (name resolves after meta).
+    expect(await within(rail).findByText('Alpha Project')).toBeInTheDocument()
+    expect(within(rail).getAllByText('2').length).toBeGreaterThan(0)
+  })
+
+  it('collapses the workload rail body', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    const user = userEvent.setup()
+    renderMyWork()
+
+    const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
+    expect(within(rail).getByText('Atanan')).toBeInTheDocument()
+
+    await user.click(within(rail).getByRole('button', { name: 'Gizle' }))
+    await waitFor(() => {
+      expect(within(rail).queryByText('Atanan')).toBeNull()
+    })
+    expect(
+      within(rail).getByRole('button', { name: 'Göster' }),
+    ).toBeInTheDocument()
   })
 })
