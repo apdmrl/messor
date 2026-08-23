@@ -120,6 +120,11 @@ export function IssueComments({
 
   const createMutation = useMutation({
     mutationFn: (body: string) => createComment(issueKey, { body }),
+    onMutate: () => {
+      // Clear before the write lands so a repeated success transitions the
+      // polite live region empty→message and is announced every time.
+      setAnnouncement(null)
+    },
     onSuccess: async () => {
       setCreateDraft('')
       setCreateError(null)
