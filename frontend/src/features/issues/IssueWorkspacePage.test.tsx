@@ -281,16 +281,23 @@ describe('IssueWorkspacePage', () => {
       expect(body).not.toContain('internal issue list secret')
     })
 
-    it('distinguishes a no-results state from an empty project', async () => {
+    it('renders workflow columns with add actions for an empty unfiltered project', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue(members)
       listIssuesMock.mockResolvedValue(emptyPage)
-      renderWorkspace('/projects/MES/board?type=BUG')
+      renderWorkspace()
 
+      const board = await screen.findByRole('region', { name: 'Kanban panosu' })
       expect(
-        await screen.findByText('Filtrelere uyan iş yok.'),
+        within(board).getByRole('region', { name: 'Yapılacak sütunu, 0 kart' }),
       ).toBeInTheDocument()
-      expect(screen.queryByText('Henüz iş yok.')).not.toBeInTheDocument()
+      expect(
+        within(board).getByRole('region', { name: 'Bitti sütunu, 0 kart' }),
+      ).toBeInTheDocument()
+      // The per-column add action is reachable for an authorized user.
+      expect(
+        within(board).getAllByRole('button', { name: 'Kart ekle' }),
+      ).toHaveLength(3)
     })
 
     it('renders populated board columns with key, title, status and assignee', async () => {

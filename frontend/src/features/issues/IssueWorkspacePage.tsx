@@ -15,7 +15,7 @@ import {
   moveIssue,
   updateIssue,
 } from './issuesApi'
-import { applyOptimisticMove } from './boardOrder'
+import { applyOptimisticMove, moveNeighbors } from './boardOrder'
 import { IssueDrawer } from './IssueDrawer'
 import { IssueFilters } from './IssueFilters'
 import type { StatusOption, MemberOption } from './IssueFilters'
@@ -106,6 +106,7 @@ export function IssueWorkspacePage(): ReactElement {
     },
     [filters, setSearchParams],
   )
+
   // True when the current view is narrowed by any user filter. Used to
   // distinguish "no issues in this project" from "no issues match the filters"
   // so each empty state can offer the right next step.
@@ -305,9 +306,9 @@ export function IssueWorkspacePage(): ReactElement {
     projectQuery.data?.currentUserRole === 'PROJECT_LEAD' ||
     projectQuery.data?.currentUserRole === 'MEMBER'
 
-  // Status-only movement appends to the destination on the server and is
-  // independent of hidden neighbors, so it stays available on filtered and
-  // paginated active views. Permission comes only from the project role.
+  // Status movement appends to the destination on the server and is independent
+  // of hidden neighbors, so it stays available on filtered and paginated active
+  // views. Permission comes only from the project role.
   const canChangeStatus = canMutate
 
   const statusCodes = useMemo(
@@ -505,12 +506,15 @@ export function IssueWorkspacePage(): ReactElement {
     mutationFn: (vars: {
       issueKey: string
       targetStatusCode: string
+      beforeIssueKey: string | null
+      afterIssueKey: string | null
+      targetIndex: number
       expectedVersion: number
     }) =>
       moveIssue(vars.issueKey, {
         targetStatusCode: vars.targetStatusCode,
-        beforeIssueKey: null,
-        afterIssueKey: null,
+        beforeIssueKey: vars.beforeIssueKey,
+        afterIssueKey: vars.afterIssueKey,
         expectedVersion: vars.expectedVersion,
       }),
     onMutate: async (vars) => {
@@ -536,7 +540,7 @@ export function IssueWorkspacePage(): ReactElement {
       if (listSnapshot !== undefined) {
         // When the current status filter excludes the destination, the moved
         // card no longer matches the visible page, so it is removed immediately.
-        // Otherwise it is appended to the destination among loaded cards and
+        // Otherwise it is inserted at the target index among loaded cards and
         // invalidation reconciles totals/membership.
         const statusFiltered =
           filters.status !== null && filters.status !== vars.targetStatusCode
@@ -545,7 +549,7 @@ export function IssueWorkspacePage(): ReactElement {
           : applyOptimisticMove(listSnapshot.items, {
               draggedKey: vars.issueKey,
               targetStatusCode: vars.targetStatusCode,
-              targetIndex: Number.MAX_SAFE_INTEGER,
+              targetIndex: vars.targetIndex,
             })
         queryClient.setQueryData(listKey, {
           ...listSnapshot,
@@ -800,6 +804,7 @@ export function IssueWorkspacePage(): ReactElement {
   const handleStatusChange = (
     issueKey: string,
     targetStatusCode: string,
+    targetIndex?: number,
   ): boolean => {
     if (anyMutationPending || mutationLocked()) {
       return false
@@ -814,11 +819,27 @@ export function IssueWorkspacePage(): ReactElement {
     if (dragged === undefined || dragged.archived === true) {
       return false
     }
-    // Only a real, valid, non-current workflow status reaches the API.
+    // Only a real workflow status reaches the API. A same-status move is a
+    // reorder, so it requires an explicit insertion index (drag/keyboard); the
+    // status disclosure always targets a different status and passes no index.
     const validStatus = statuses.some((s) => s.code === targetStatusCode)
-    if (!validStatus || targetStatusCode === dragged.statusCode) {
+    if (!validStatus) {
       return false
     }
+    if (targetStatusCode === dragged.statusCode && targetIndex === undefined) {
+      return false
+    }
+    // Only a drag/keyboard move supplies an explicit insertion index and thus
+    // derives before/after neighbor keys; the status disclosure appends and
+    // keeps both neighbors null (the established append contract).
+    const hasIndex = targetIndex !== undefined
+    const neighbors = hasIndex
+      ? moveNeighbors(issues, {
+          draggedKey: issueKey,
+          targetStatusCode,
+          targetIndex,
+        })
+      : { beforeIssueKey: null, afterIssueKey: null }
     if (!tryAcquireMutation('move')) {
       return false
     }
@@ -826,6 +847,9 @@ export function IssueWorkspacePage(): ReactElement {
     moveMutation.mutate({
       issueKey,
       targetStatusCode,
+      beforeIssueKey: neighbors.beforeIssueKey,
+      afterIssueKey: neighbors.afterIssueKey,
+      targetIndex: hasIndex ? targetIndex : Number.MAX_SAFE_INTEGER,
       expectedVersion: dragged.version,
     })
     return true
@@ -980,15 +1004,16 @@ export function IssueWorkspacePage(): ReactElement {
             </p>
           )}
 
-          {issuesQuery.isSuccess && issuesQuery.data.items.length === 0 && (
-            hasActiveFilters ? (
-              <p className="issue-workspace__empty">Filtrelere uyan iş yok.</p>
-            ) : (
-              <p className="issue-workspace__empty">Henüz iş yok.</p>
-            )
-          )}
+          {issuesQuery.isSuccess &&
+            issuesQuery.data.items.length === 0 &&
+            hasActiveFilters && (
+              <p className="issue-workspace__empty">
+                Filtrelere uyan iş yok.
+              </p>
+            )}
 
-          {issuesQuery.isSuccess && issuesQuery.data.items.length > 0 && (
+          {issuesQuery.isSuccess &&
+            (issuesQuery.data.items.length > 0 || !hasActiveFilters) && (
             <ProjectBoard
               workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
               issues={issuesQuery.data.items}

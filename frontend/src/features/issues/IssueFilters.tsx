@@ -123,7 +123,9 @@ export function IssueFilters({
       patch: { status: null },
     })
   }
-  if (members.length > 0 && filters.assignee !== null) {
+  // The assignee chip is shown whenever an assignee filter is active; the raw
+  // ID is used as a label fallback when member metadata is unavailable.
+  if (filters.assignee !== null) {
     const label = members.find((m) => m.id === filters.assignee)?.label
     chips.push({
       key: 'assignee',

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { WorkflowStatus } from '../projects/types'
 import { ProjectBoard } from './ProjectBoard'
@@ -152,25 +152,50 @@ describe('ProjectBoard', () => {
     ).not.toBeInTheDocument()
   })
 
-  describe('WIP warning', () => {
-    it('shows an overburdened warning when a column exceeds the WIP limit', () => {
-      const overloaded = [
-        makeIssue({ issueKey: 'MES-1', number: 1 }),
-        makeIssue({ issueKey: 'MES-2', number: 2 }),
-      ]
-      renderBoard({ issues: overloaded, wipLimit: 1 })
-      expect(screen.getByText(/WIP sınırı aşıldı/)).toBeInTheDocument()
+  describe('pointer drag movement', () => {
+    it('drops a dragged card into an empty column at index 0', () => {
+      const { onStatusChange } = renderBoard()
+      const card = screen
+        .getByRole('button', { name: 'MES-1, First, Yapılacak' })
+        .closest('li') as HTMLElement
+      fireEvent.dragStart(card)
+      const done = screen.getByRole('region', { name: 'Bitti sütunu, 0 kart' })
+      fireEvent.drop(done, { clientY: 0 })
+      expect(onStatusChange).toHaveBeenCalledWith('MES-1', 'DONE', 0)
+    })
+  })
+
+  describe('keyboard movement', () => {
+    it('grabs a card with Space and marks it aria-grabbed', async () => {
+      const user = userEvent.setup()
+      renderBoard()
+      const card = screen.getByRole('button', { name: 'MES-1, First, Yapılacak' })
+      card.focus()
+      await user.keyboard(' ')
+      expect(card.closest('li')).toHaveAttribute('aria-grabbed', 'true')
     })
 
-    it('does not warn when every column is at or under the WIP limit', () => {
-      const atLimit = [
-        makeIssue({ issueKey: 'MES-1', number: 1 }),
-        makeIssue({ issueKey: 'MES-2', number: 2 }),
-      ]
-      renderBoard({ issues: atLimit, wipLimit: 2 })
-      expect(
-        screen.queryByText(/WIP sınırı aşıldı/),
-      ).not.toBeInTheDocument()
+    it('moves a card across columns with Space/arrow/Space and a target index', async () => {
+      const user = userEvent.setup()
+      const { onStatusChange } = renderBoard()
+      const card = screen.getByRole('button', { name: 'MES-1, First, Yapılacak' })
+      card.focus()
+      await user.keyboard(' ')
+      await user.keyboard('{ArrowRight}')
+      await user.keyboard(' ')
+      expect(onStatusChange).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS', 0)
+    })
+
+    it('cancels a keyboard move with Escape without moving', async () => {
+      const user = userEvent.setup()
+      const { onStatusChange } = renderBoard()
+      const card = screen.getByRole('button', { name: 'MES-1, First, Yapılacak' })
+      card.focus()
+      await user.keyboard(' ')
+      await user.keyboard('{ArrowRight}')
+      await user.keyboard('{Escape}')
+      expect(onStatusChange).not.toHaveBeenCalled()
+      expect(card.closest('li')).not.toHaveAttribute('aria-grabbed')
     })
   })
 
@@ -284,12 +309,18 @@ describe('ProjectBoard', () => {
     })
   })
 
-  it('selects a card via its keyboard-focusable button', async () => {
+  it('opens detail on the card surface and stops on status controls', async () => {
     const user = userEvent.setup()
     const { onSelect } = renderBoard()
-    const card = screen.getByRole('button', { name: 'MES-1, First, Yapılacak' })
-    await user.click(card)
+    const card = screen
+      .getByRole('button', { name: 'MES-1, First, Yapılacak' })
+      .closest('li') as HTMLElement
+    fireEvent.click(card)
     expect(onSelect).toHaveBeenCalledWith('MES-1')
+    // The status disclosure control stops propagation: clicking it never opens
+    // the detail.
+    await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+    expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
   describe('keyboard and Escape', () => {

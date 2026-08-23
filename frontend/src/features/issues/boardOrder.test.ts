@@ -6,6 +6,7 @@ import {
   buildColumns,
   columnIssues,
   isOverburdened,
+  moveNeighbors,
   normalizeWorkflowStatuses,
 } from './boardOrder'
 
@@ -166,5 +167,51 @@ describe('isOverburdened', () => {
   it('honors a custom limit', () => {
     expect(isOverburdened(3, 3)).toBe(false)
     expect(isOverburdened(4, 3)).toBe(true)
+  })
+})
+describe('moveNeighbors', () => {
+  it('maps a head insertion to a before neighbor', () => {
+    const n = moveNeighbors([a, b, c, d], {
+      draggedKey: 'MES-1',
+      targetStatusCode: 'IN_PROGRESS',
+      targetIndex: 0,
+    })
+    expect(n).toEqual({ beforeIssueKey: 'MES-4', afterIssueKey: null })
+  })
+
+  it('maps an append to an after neighbor', () => {
+    const n = moveNeighbors([a, b, c, d], {
+      draggedKey: 'MES-1',
+      targetStatusCode: 'IN_PROGRESS',
+      targetIndex: Number.MAX_SAFE_INTEGER,
+    })
+    expect(n).toEqual({ beforeIssueKey: null, afterIssueKey: 'MES-4' })
+  })
+
+  it('maps a same-status middle reorder to a before neighbor', () => {
+    const n = moveNeighbors([a, b, c, d], {
+      draggedKey: 'MES-1',
+      targetStatusCode: 'TO_DO',
+      targetIndex: 1,
+    })
+    expect(n).toEqual({ beforeIssueKey: 'MES-3', afterIssueKey: null })
+  })
+
+  it('maps a same-status append to an after neighbor', () => {
+    const n = moveNeighbors([a, b, c, d], {
+      draggedKey: 'MES-1',
+      targetStatusCode: 'TO_DO',
+      targetIndex: Number.MAX_SAFE_INTEGER,
+    })
+    expect(n).toEqual({ beforeIssueKey: null, afterIssueKey: 'MES-3' })
+  })
+
+  it('returns null neighbors for an empty destination', () => {
+    const n = moveNeighbors([a], {
+      draggedKey: 'MES-1',
+      targetStatusCode: 'DONE',
+      targetIndex: 0,
+    })
+    expect(n).toEqual({ beforeIssueKey: null, afterIssueKey: null })
   })
 })

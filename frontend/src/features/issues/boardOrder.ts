@@ -1,5 +1,20 @@
 import type { Issue } from './types'
 import type { WorkflowStatus } from '../projects/types'
+
+/**
+ * Pure, deterministic board-ordering helpers. These functions own the rules for
+ * grouping issues into server-ordered workflow columns, ordering cards, and
+ * deriving an optimistic move result plus the server insertion neighbors from a
+ * target insertion index. It is deliberately free of React, network, and query
+ * state so it can be unit tested in isolation.
+ */
+
+export interface BoardColumn {
+  statusCode: string
+  displayName: string
+  issues: Issue[]
+}
+
 /**
  * Default WIP (work-in-progress) threshold used for the client-side column
  * overload warning. This is a presentational guard only: the backend has no WIP
@@ -11,21 +26,6 @@ export const WIP_LIMIT = 5
 /** True when a column holds more cards than the given (default) WIP limit. */
 export function isOverburdened(count: number, limit = WIP_LIMIT): boolean {
   return count > limit
-}
-
-/**
- * Pure, deterministic board-ordering helpers. These functions own the rules for
- * grouping issues into server-ordered workflow columns and ordering cards.
- * Status movement no longer derives visible-list neighbors: it always appends
- * to the destination column (both neighbor keys null), so this module is free
- * of drag/drop resolution and rank-reorder math. It is deliberately free of
- * React, network, and query state so it can be unit tested in isolation.
- */
-
-export interface BoardColumn {
-  statusCode: string
-  displayName: string
-  issues: Issue[]
 }
 
 /**
@@ -102,10 +102,11 @@ export function buildColumns(
 
 /**
  * Return a new issue array reflecting an optimistic status-only move: the moved
- * issue's status is updated and it is appended to the destination column with
- * an interleaved rank. The server version is never fabricated (it stays at the
- * last known server value). A {@code targetIndex} beyond the destination length
- * clamps to the end, which is the normal status-change path (append).
+ * issue's status is updated and it is inserted into the destination column at
+ * {@code targetIndex} with an interleaved rank. The server version is never
+ * fabricated (it stays at the last known server value). A {@code targetIndex}
+ * beyond the destination length clamps to the end, which is the status-change
+ * append path.
  */
 export function applyOptimisticMove(
   issues: Issue[],
@@ -133,6 +134,33 @@ export function applyOptimisticMove(
   }
 
   return others.concat(updated)
+}
+
+/**
+ * Map a target insertion index in the destination column to the before/after
+ * neighbor keys the server expects. The destination is computed with the moved
+ * issue excluded (mirroring {@link applyOptimisticMove}), so the keys reference
+ * the list the backend also operates on after removing a same-status move.
+ *
+ * <p>Exactly one neighbor is emitted to satisfy the move request's mutual
+ * exclusion: the next card is preferred (insert before it); only when appending
+ * at the end does it fall back to the previous card (insert after it).</p>
+ */
+export function moveNeighbors(
+  issues: Issue[],
+  params: { draggedKey: string; targetStatusCode: string; targetIndex: number },
+): { beforeIssueKey: string | null; afterIssueKey: string | null } {
+  const { draggedKey, targetStatusCode, targetIndex } = params
+  const others = issues.filter((issue) => issue.issueKey !== draggedKey)
+  const destination = columnIssues(others, targetStatusCode)
+  const position = clampIndex(targetIndex, destination.length)
+  const beforeIssueKey =
+    position < destination.length ? destination[position].issueKey : null
+  const afterIssueKey =
+    beforeIssueKey === null && position > 0
+      ? destination[position - 1].issueKey
+      : null
+  return { beforeIssueKey, afterIssueKey }
 }
 
 function interleaveRank(prevRank: number, nextRank: number): number {
