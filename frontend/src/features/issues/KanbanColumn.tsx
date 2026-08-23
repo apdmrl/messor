@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react'
-import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { WorkflowStatus } from '../projects/types'
+import { WIP_LIMIT, isOverburdened } from './boardOrder'
 import { IssueCard } from './IssueCard'
 import type { Issue } from './types'
 
@@ -9,41 +8,43 @@ interface KanbanColumnProps {
   status: WorkflowStatus
   issues: Issue[]
   workflowStatuses: WorkflowStatus[]
-  columnIndex: number
-  totalColumns: number
   selectedIssueKey: string | null
   canMove: boolean
   moveDisabled: boolean
+  movePendingKey: string | null
   selectionDisabled: boolean
+  /** WIP threshold; a column exceeding it renders the overburdened warning. */
+  wipLimit?: number
+  /** When provided (authorized user), an empty column offers an add action. */
+  onCreate?: () => void
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
+  onStatusChange: (issueKey: string, targetStatusCode: string) => boolean
 }
 
 export function KanbanColumn({
   status,
   issues,
   workflowStatuses,
-  columnIndex,
-  totalColumns,
   selectedIssueKey,
   canMove,
   moveDisabled,
+  movePendingKey,
   selectionDisabled,
+  wipLimit = WIP_LIMIT,
+  onCreate,
   statusLabel,
   assigneeLabel,
   onSelect,
-  onMove,
+  onStatusChange,
 }: KanbanColumnProps): ReactElement {
-  const { setNodeRef, isOver } = useDroppable({ id: `column-${status.code}` })
-
+  const overburdened = isOverburdened(issues.length, wipLimit)
   return (
     <section
       className="kanban-column"
-      ref={setNodeRef}
       aria-label={`${status.displayName} sütunu, ${issues.length} kart`}
-      data-over={isOver ? 'true' : 'false'}
+      aria-busy={movePendingKey !== null ? true : undefined}
     >
       <h4 className="kanban-column__heading">
         {status.displayName}
@@ -51,35 +52,43 @@ export function KanbanColumn({
           {issues.length}
         </span>
       </h4>
+      {overburdened && (
+        <p className="kanban-column__wip" role="status">
+          WIP sınırı aşıldı: {issues.length} kart (sınır {wipLimit}).
+        </p>
+      )}
       {issues.length === 0 ? (
-        <p className="kanban-column__empty">Kart yok</p>
+        <div className="kanban-column__empty">
+          <p className="kanban-column__empty-text">Kart yok</p>
+          {onCreate !== undefined && (
+            <button
+              type="button"
+              className="kanban-column__add"
+              onClick={onCreate}
+            >
+              Kart ekle
+            </button>
+          )}
+        </div>
       ) : (
-        <SortableContext
-          items={issues.map((issue) => issue.issueKey)}
-          strategy={verticalListSortingStrategy}
-        >
-          <ul className="kanban-column__cards">
-            {issues.map((issue, cardIndex) => (
-              <IssueCard
-                key={issue.issueKey}
-                issue={issue}
-                statusLabel={statusLabel}
-                assigneeLabel={assigneeLabel}
-                selected={issue.issueKey === selectedIssueKey}
-                selectionDisabled={selectionDisabled}
-                canMove={canMove}
-                moveDisabled={moveDisabled}
-                workflowStatuses={workflowStatuses}
-                columnIndex={columnIndex}
-                cardIndex={cardIndex}
-                columnIssueCount={issues.length}
-                totalColumns={totalColumns}
-                onSelect={onSelect}
-                onMove={onMove}
-              />
-            ))}
-          </ul>
-        </SortableContext>
+        <ul className="kanban-column__cards">
+          {issues.map((issue) => (
+            <IssueCard
+              key={issue.issueKey}
+              issue={issue}
+              statusLabel={statusLabel}
+              assigneeLabel={assigneeLabel}
+              selected={issue.issueKey === selectedIssueKey}
+              selectionDisabled={selectionDisabled}
+              canMove={canMove}
+              moveDisabled={moveDisabled}
+              movePendingKey={movePendingKey}
+              workflowStatuses={workflowStatuses}
+              onSelect={onSelect}
+              onStatusChange={onStatusChange}
+            />
+          ))}
+        </ul>
       )}
     </section>
   )

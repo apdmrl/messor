@@ -41,12 +41,13 @@ const inProgress = makeIssue({
   rank: 1024,
   title: 'Third',
 })
-const doneCard = makeIssue({
-  issueKey: 'MES-4',
-  number: 4,
+const archivedCard = makeIssue({
+  issueKey: 'MES-9',
+  number: 9,
   statusCode: 'DONE',
   rank: 1024,
-  title: 'Done',
+  archived: true,
+  title: 'Archived',
 })
 
 const statusLabel = (code: string): string =>
@@ -57,14 +58,18 @@ interface RenderOpts {
   issues?: Issue[]
   canMove?: boolean
   moveDisabled?: boolean
+  movePendingKey?: string | null
   selectionDisabled?: boolean
   includeArchived?: boolean
   selectedIssueKey?: string | null
+  wipLimit?: number
+  onCreate?: () => void
 }
 
 function renderBoard(opts: RenderOpts = {}) {
   const onSelect = vi.fn()
-  const onMove = vi.fn()
+  const onStatusChange = vi.fn()
+  const onCreate = opts.onCreate ?? vi.fn()
   render(
     <ProjectBoard
       workflowStatuses={STATUSES}
@@ -72,15 +77,18 @@ function renderBoard(opts: RenderOpts = {}) {
       selectedIssueKey={opts.selectedIssueKey ?? null}
       canMove={opts.canMove ?? true}
       moveDisabled={opts.moveDisabled ?? false}
+      movePendingKey={opts.movePendingKey ?? null}
       selectionDisabled={opts.selectionDisabled ?? false}
       includeArchived={opts.includeArchived ?? false}
+      wipLimit={opts.wipLimit}
+      onCreate={opts.onCreate}
       statusLabel={statusLabel}
       assigneeLabel={assigneeLabel}
       onSelect={onSelect}
-      onMove={onMove}
+      onStatusChange={onStatusChange}
     />,
   )
-  return { onSelect, onMove }
+  return { onSelect, onStatusChange, onCreate }
 }
 
 describe('ProjectBoard', () => {
@@ -121,9 +129,49 @@ describe('ProjectBoard', () => {
     expect(unselected).not.toHaveAttribute('aria-current', 'true')
   })
 
-  it('renders an empty column as a valid labelled drop target', () => {
+  it('renders an empty column without a page-height jump', () => {
     renderBoard()
     expect(screen.getByText('Kart yok')).toBeInTheDocument()
+  })
+  it('offers an add action in an empty column when onCreate is provided', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn()
+    const { onCreate: returnedCreate } = renderBoard({
+      issues: [toDoA, toDoB, inProgress],
+      onCreate,
+    })
+    const done = screen.getByRole('region', { name: 'Bitti sütunu, 0 kart' })
+    await user.click(within(done).getByRole('button', { name: 'Kart ekle' }))
+    expect(returnedCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides the empty-column add action when onCreate is absent', () => {
+    renderBoard({ issues: [toDoA] })
+    expect(
+      screen.queryByRole('button', { name: 'Kart ekle' }),
+    ).not.toBeInTheDocument()
+  })
+
+  describe('WIP warning', () => {
+    it('shows an overburdened warning when a column exceeds the WIP limit', () => {
+      const overloaded = [
+        makeIssue({ issueKey: 'MES-1', number: 1 }),
+        makeIssue({ issueKey: 'MES-2', number: 2 }),
+      ]
+      renderBoard({ issues: overloaded, wipLimit: 1 })
+      expect(screen.getByText(/WIP sınırı aşıldı/)).toBeInTheDocument()
+    })
+
+    it('does not warn when every column is at or under the WIP limit', () => {
+      const atLimit = [
+        makeIssue({ issueKey: 'MES-1', number: 1 }),
+        makeIssue({ issueKey: 'MES-2', number: 2 }),
+      ]
+      renderBoard({ issues: atLimit, wipLimit: 2 })
+      expect(
+        screen.queryByText(/WIP sınırı aşıldı/),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it('never renders an attacker-controlled column for an unknown status', () => {
@@ -139,137 +187,101 @@ describe('ProjectBoard', () => {
     expect(body).not.toContain('pwn')
   })
 
-  describe('movement controls', () => {
-    it('exposes a movement menu for a movable card (PROJECT_LEAD/MEMBER)', async () => {
+  describe('status-change controls', () => {
+    it('opens a status disclosure listing every workflow status for a movable card', async () => {
       const user = userEvent.setup()
       renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
       expect(
-        screen.getByRole('button', { name: 'Sonraki sütuna taşı' }),
+        screen.getByRole('button', { name: 'Yapılacak durumuna taşı' }),
       ).toBeInTheDocument()
       expect(
-        screen.getByRole('button', { name: 'Aşağı taşı' }),
+        screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Bitti durumuna taşı' }),
       ).toBeInTheDocument()
     })
 
-    it('hides all movement controls for a VIEWER', () => {
+    it('lists statuses in normalized server order', async () => {
+      const user = userEvent.setup()
+      const { onStatusChange } = renderBoard()
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+      const actions = screen
+        .getAllByRole('button', { name: /durumuna taşı/ })
+        .map((b) => b.textContent)
+      expect(actions).toEqual([
+        'Yapılacak durumuna taşı',
+        'Sürüyor durumuna taşı',
+        'Bitti durumuna taşı',
+      ])
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
+      expect(onStatusChange).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS')
+    })
+
+    it('marks the current status option as disabled and aria-current', async () => {
+      const user = userEvent.setup()
+      renderBoard()
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+      const current = screen.getByRole('button', { name: 'Yapılacak durumuna taşı' })
+      expect(current).toBeDisabled()
+      expect(current).toHaveAttribute('aria-current', 'true')
+      const next = screen.getByRole('button', { name: 'Sürüyor durumuna taşı' })
+      expect(next).toBeEnabled()
+      expect(next).not.toHaveAttribute('aria-current')
+    })
+
+    it('changes status to a target and closes the disclosure', async () => {
+      const user = userEvent.setup()
+      const { onStatusChange } = renderBoard()
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
+      expect(onStatusChange).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS')
+      expect(
+        screen.queryByRole('button', { name: 'Sürüyor durumuna taşı' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('hides all status-change controls for a VIEWER but keeps the chip', () => {
       renderBoard({ canMove: false })
       expect(
-        screen.queryByRole('button', { name: /taşıma menüsü/ }),
+        screen.queryByRole('button', { name: /durumu değiştir/ }),
       ).not.toBeInTheDocument()
       expect(
-        screen.queryByRole('button', { name: /taşı$/ }),
+        screen.queryByRole('button', { name: /durumuna taşı/ }),
       ).not.toBeInTheDocument()
     })
 
-    it('disables every movement control while a mutation is pending', async () => {
+    it('renders archived cards as read-only with no status trigger', () => {
+      renderBoard({ issues: [archivedCard], includeArchived: true })
+      expect(
+        screen.queryByRole('button', { name: /durumu değiştir/ }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /^MES-9,/ }),
+      ).toBeInTheDocument()
+    })
+
+    it('disables every status trigger while a mutation is pending', async () => {
       const user = userEvent.setup()
       renderBoard({ moveDisabled: true })
-      const toggle = screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' })
-      expect(toggle).toBeDisabled()
-      await user.click(toggle)
+      const trigger = screen.getByRole('button', { name: 'MES-1 için durumu değiştir' })
+      expect(trigger).toBeDisabled()
+      await user.click(trigger)
       expect(
-        screen.queryByRole('button', { name: 'Sonraki sütuna taşı' }),
+        screen.queryByRole('button', { name: /durumuna taşı/ }),
       ).not.toBeInTheDocument()
     })
 
-    it('moves to the next column (append) via the movement menu', async () => {
-      const user = userEvent.setup()
-      const { onMove } = renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
-      expect(onMove).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
+    it('shows pending text and aria-busy on the card being moved', () => {
+      renderBoard({ movePendingKey: 'MES-1' })
+      const trigger = screen.getByRole('button', { name: 'MES-1 için durumu değiştir' })
+      expect(trigger).toHaveTextContent('Taşınıyor…')
+      const card = trigger.closest('li') as HTMLElement
+      expect(card).toHaveAttribute('aria-busy', 'true')
+      const other = screen.getByRole('button', { name: 'MES-2 için durumu değiştir' })
+      expect(other).toHaveTextContent('Durumu değiştir')
     })
-
-    it('moves to the previous column (append) via the movement menu', async () => {
-      const user = userEvent.setup()
-      const { onMove } = renderBoard({ issues: [inProgress] })
-      await user.click(screen.getByRole('button', { name: 'MES-3 için taşıma menüsü' }))
-      await user.click(screen.getByRole('button', { name: 'Önceki sütuna taşı' }))
-      expect(onMove).toHaveBeenCalledWith('MES-3', 'TO_DO', Number.MAX_SAFE_INTEGER)
-    })
-
-    it('moves a card up within its column', async () => {
-      const user = userEvent.setup()
-      const { onMove } = renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-2 için taşıma menüsü' }))
-      await user.click(screen.getByRole('button', { name: 'Yukarı taşı' }))
-      expect(onMove).toHaveBeenCalledWith('MES-2', 'TO_DO', 0)
-    })
-
-    it('moves a card down within its column', async () => {
-      const user = userEvent.setup()
-      const { onMove } = renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-      await user.click(screen.getByRole('button', { name: 'Aşağı taşı' }))
-      expect(onMove).toHaveBeenCalledWith('MES-1', 'TO_DO', 1)
-    })
-
-    it('disables impossible moves (top of column, first column)', async () => {
-      const user = userEvent.setup()
-      renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-      // first column so previous is impossible; first card so move up impossible
-      expect(
-        screen.getByRole('button', { name: 'Önceki sütuna taşı' }),
-      ).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Yukarı taşı' })).toBeDisabled()
-      expect(screen.getByRole('button', { name: 'Aşağı taşı' })).toBeEnabled()
-      expect(screen.getByRole('button', { name: 'Sonraki sütuna taşı' })).toBeEnabled()
-    })
-  })
-
-  it('uses one normalized status order for columns and movement controls', async () => {
-    const unsorted: WorkflowStatus[] = [
-      { code: 'DONE', displayName: 'Bitti', position: 2 },
-      { code: 'TO_DO', displayName: 'Yapılacak', position: 0 },
-      { code: 'IN_PROGRESS', displayName: 'Sürüyor', position: 1 },
-    ]
-    const user = userEvent.setup()
-    const onMove = vi.fn()
-    render(
-      <ProjectBoard
-        workflowStatuses={unsorted}
-        issues={[toDoA, inProgress, doneCard]}
-        selectedIssueKey={null}
-        canMove
-        moveDisabled={false}
-        selectionDisabled={false}
-        includeArchived={false}
-        statusLabel={statusLabel}
-        assigneeLabel={assigneeLabel}
-        onSelect={() => {}}
-        onMove={onMove}
-      />,
-    )
-
-    // Columns render in normalized position order TO_DO → IN_PROGRESS → DONE.
-    const columns = screen.getAllByRole('region', { name: /sütunu/ })
-    expect(columns.map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Yapılacak sütunu, 1 kart',
-      'Sürüyor sütunu, 1 kart',
-      'Bitti sütunu, 1 kart',
-    ])
-
-    // "Sonraki sütuna taşı" from the first positioned column (TO_DO) targets
-    // IN_PROGRESS, not the raw-array neighbor.
-    await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-    await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
-    expect(onMove).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
-
-    // Previous is impossible on the actual first positioned column (TO_DO).
-    await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-    expect(screen.getByRole('button', { name: 'Önceki sütuna taşı' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Sonraki sütuna taşı' })).toBeEnabled()
-    await user.keyboard('{Escape}')
-
-    // Next is impossible on the actual last positioned column (DONE), and its
-    // previous targets IN_PROGRESS.
-    await user.click(screen.getByRole('button', { name: 'MES-4 için taşıma menüsü' }))
-    expect(screen.getByRole('button', { name: 'Sonraki sütuna taşı' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Önceki sütuna taşı' })).toBeEnabled()
-    await user.click(screen.getByRole('button', { name: 'Önceki sütuna taşı' }))
-    expect(onMove).toHaveBeenCalledWith('MES-4', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
   })
 
   it('selects a card via its keyboard-focusable button', async () => {
@@ -280,79 +292,44 @@ describe('ProjectBoard', () => {
     expect(onSelect).toHaveBeenCalledWith('MES-1')
   })
 
-  describe('keyboard, Escape and reduced motion', () => {
-    it('activates a movement action with the keyboard', async () => {
+  describe('keyboard and Escape', () => {
+    it('activates a status action with the keyboard', async () => {
       const user = userEvent.setup()
-      const { onMove } = renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-      const next = screen.getByRole('button', { name: 'Sonraki sütuna taşı' })
+      const { onStatusChange } = renderBoard()
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+      const next = screen.getByRole('button', { name: 'Sürüyor durumuna taşı' })
       next.focus()
       await user.keyboard('{Enter}')
-      expect(onMove).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS', Number.MAX_SAFE_INTEGER)
+      expect(onStatusChange).toHaveBeenCalledWith('MES-1', 'IN_PROGRESS')
     })
 
-    it('closes the movement menu with Escape without triggering a move', async () => {
+    it('closes the disclosure with Escape without changing status', async () => {
       const user = userEvent.setup()
-      const { onMove } = renderBoard()
-      await user.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+      const { onStatusChange } = renderBoard()
+      await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
       expect(
-        screen.getByRole('button', { name: 'Sonraki sütuna taşı' }),
+        screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }),
       ).toBeInTheDocument()
       await user.keyboard('{Escape}')
       expect(
-        screen.queryByRole('button', { name: 'Sonraki sütuna taşı' }),
+        screen.queryByRole('button', { name: 'Sürüyor durumuna taşı' }),
       ).not.toBeInTheDocument()
-      expect(onMove).not.toHaveBeenCalled()
+      expect(onStatusChange).not.toHaveBeenCalled()
     })
 
-    it('returns focus to the menu toggle when the movement menu closes with Escape', async () => {
+    it('returns focus to the trigger when the disclosure closes with Escape', async () => {
       const user = userEvent.setup()
       renderBoard()
-      const toggle = screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' })
+      const toggle = screen.getByRole('button', { name: 'MES-1 için durumu değiştir' })
       await user.click(toggle)
-      const action = screen.getByRole('button', { name: 'Sonraki sütuna taşı' })
+      const action = screen.getByRole('button', { name: 'Sürüyor durumuna taşı' })
       action.focus()
       expect(action).toHaveFocus()
       await user.keyboard('{Escape}')
       expect(
-        screen.queryByRole('button', { name: 'Sonraki sütuna taşı' }),
+        screen.queryByRole('button', { name: 'Sürüyor durumuna taşı' }),
       ).not.toBeInTheDocument()
       expect(toggle).toHaveFocus()
-    })
-
-    it('mounts controlled Turkish drag instructions and announcements, never raw status text', () => {
-      renderBoard()
-      const body = document.body.textContent ?? ''
-      // controlled Turkish screen-reader instructions are present
-      expect(body).toContain('Sürüklenebilir bir kartı seçmek için')
-      expect(body).toContain('boşluk tuşuna basın')
-      // a hostile status never leaks into the rendered instructions
-      const hostile = makeIssue({
-        issueKey: 'MES-9',
-        number: 9,
-        statusCode: '<script>pwn</script>',
-      })
-      renderBoard({ issues: [toDoA, hostile] })
-      expect(document.body.textContent ?? '').not.toContain('pwn')
-    })
-
-    it('removes drag transition animation under prefers-reduced-motion', () => {
-      const mq = {
-        matches: true,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      } as unknown as MediaQueryList
-      const matchMedia = vi.fn(() => mq)
-      vi.stubGlobal('matchMedia', matchMedia)
-      try {
-        renderBoard()
-        const card = screen.getByRole('button', { name: 'MES-1, First, Yapılacak' })
-          .closest('li') as HTMLElement
-        expect(card.style.transition).toBe('')
-        expect(card.style.transition).not.toMatch(/transform/)
-      } finally {
-        vi.unstubAllGlobals()
-      }
     })
   })
 })

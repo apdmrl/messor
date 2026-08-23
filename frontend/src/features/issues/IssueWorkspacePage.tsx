@@ -15,7 +15,7 @@ import {
   moveIssue,
   updateIssue,
 } from './issuesApi'
-import { applyOptimisticMove, computeMove } from './boardOrder'
+import { applyOptimisticMove } from './boardOrder'
 import { IssueDrawer } from './IssueDrawer'
 import { IssueFilters } from './IssueFilters'
 import type { StatusOption, MemberOption } from './IssueFilters'
@@ -25,7 +25,6 @@ import { ProjectBoard } from './ProjectBoard'
 import {
   parseFilters,
   serializeFilters,
-  canReorderBoard,
   PROJECT_FILTER_CONTEXT,
 } from './issueFilters'
 import type { IssueFilterState } from './issueFilters'
@@ -40,11 +39,11 @@ import './ProjectBoard.css'
 import './IssueFilters.css'
 
 const GENERIC_ERROR = 'İşlem tamamlanamadı. Lütfen tekrar deneyin.'
-const LIST_ERROR_FALLBACK = 'İssue’lar yüklenemedi. Lütfen tekrar deneyin.'
+const LIST_ERROR_FALLBACK = 'İşler yüklenemedi. Lütfen tekrar deneyin.'
 const PROJECT_ERROR_FALLBACK =
   'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.'
 const MEMBERS_ERROR_FALLBACK = 'Üye listesi yüklenemedi. Lütfen tekrar deneyin.'
-const DETAIL_ERROR_FALLBACK = 'Issue detayı yüklenemedi. Lütfen tekrar deneyin.'
+const DETAIL_ERROR_FALLBACK = 'İş detayı yüklenemedi. Lütfen tekrar deneyin.'
 
 const ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_FAILED:
@@ -52,9 +51,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_ASSIGNEE: 'Seçilen atanan bu projenin üyesi değil.',
   VERSION_CONFLICT:
     'Veriler başka bir işlem tarafından güncellendi; yazdıkların korundu. Tekrar gözden geçirip gönder.',
-  ISSUE_ARCHIVED: 'Bu issue arşivlendi; güncelleme yapılamıyor.',
+  ISSUE_ARCHIVED: 'Bu iş arşivlendi; güncelleme yapılamıyor.',
   FORBIDDEN: 'Bu işlem için yetkiniz yok.',
-  ISSUE_NOT_FOUND: 'Bu issue bulunamadı.',
+  ISSUE_NOT_FOUND: 'Bu iş bulunamadı.',
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -107,6 +106,14 @@ export function IssueWorkspacePage(): ReactElement {
     },
     [filters, setSearchParams],
   )
+  // True when the current view is narrowed by any user filter. Used to
+  // distinguish "no issues in this project" from "no issues match the filters"
+  // so each empty state can offer the right next step.
+  const hasActiveFilters =
+    filters.type !== null ||
+    filters.status !== null ||
+    filters.assignee !== null ||
+    filters.archive !== 'active'
 
   // Real URL canonicalization: parse/serialize alone do not change the browser
   // URL. When the current query string differs from the canonical effective
@@ -136,6 +143,28 @@ export function IssueWorkspacePage(): ReactElement {
   >(null)
   const [focusIssueKey, setFocusIssueKey] = useState<string | null>(null)
   const [commentsBusy, setCommentsBusy] = useState(false)
+  // The issueKey whose status change is currently in flight; drives the card's
+  // aria-busy and "Taşınıyor…" trigger text during the move.
+  const [movePendingKey, setMovePendingKey] = useState<string | null>(null)
+  // Persistent page-level status announcement for a completed move.
+  const [moveAnnouncement, setMoveAnnouncement] = useState<string | null>(null)
+  // Focus target for the moved card's status trigger after a move lands.
+  const [focusStatusIssueKey, setFocusStatusIssueKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (focusIssueKey !== null) {
+      document.getElementById(`kanban-card-${focusIssueKey}`)?.focus()
+      setFocusIssueKey(null)
+    }
+  }, [focusIssueKey])
+
+  useEffect(() => {
+    if (focusStatusIssueKey !== null) {
+      document
+        .getElementById(`kanban-card-status-${focusStatusIssueKey}`)
+        ?.focus()
+      setFocusStatusIssueKey(null)
+    }
+  }, [focusStatusIssueKey])
 
   // True when the drawer was opened by navigating from within the app (a board
   // card click), as opposed to a direct URL load.
@@ -276,11 +305,10 @@ export function IssueWorkspacePage(): ReactElement {
     projectQuery.data?.currentUserRole === 'PROJECT_LEAD' ||
     projectQuery.data?.currentUserRole === 'MEMBER'
 
-  // Reordering is only safe on a complete, unfiltered, single-page active
-  // board; otherwise the rendered subset index would not map to the backend's
-  // full-column ordering, so movement controls are suppressed entirely.
-  const boardCanMove = canMutate && canReorderBoard(filters, issuesQuery.data?.totalPages ?? 0)
-  const boardMoveLocked = canMutate && !boardCanMove
+  // Status-only movement appends to the destination on the server and is
+  // independent of hidden neighbors, so it stays available on filtered and
+  // paginated active views. Permission comes only from the project role.
+  const canChangeStatus = canMutate
 
   const statusCodes = useMemo(
     () =>
@@ -477,21 +505,19 @@ export function IssueWorkspacePage(): ReactElement {
     mutationFn: (vars: {
       issueKey: string
       targetStatusCode: string
-      beforeIssueKey: string | null
-      afterIssueKey: string | null
       expectedVersion: number
-      targetIndex: number
     }) =>
       moveIssue(vars.issueKey, {
         targetStatusCode: vars.targetStatusCode,
-        beforeIssueKey: vars.beforeIssueKey,
-        afterIssueKey: vars.afterIssueKey,
+        beforeIssueKey: null,
+        afterIssueKey: null,
         expectedVersion: vars.expectedVersion,
       }),
     onMutate: async (vars) => {
-      // Defensive ownership assertion: handleMove acquires the synchronous lock
-      // before mutate; onMutate only confirms that the already-acquired owner is
-      // a move and never re-acquires. Anything else fails closed.
+      // Defensive ownership assertion: handleStatusChange acquires the
+      // synchronous lock before mutate; onMutate only confirms that the
+      // already-acquired owner is a move and never re-acquires. Anything else
+      // fails closed.
       if (activeMutationRef.current !== 'move') {
         throw new Error('blocked')
       }
@@ -508,13 +534,22 @@ export function IssueWorkspacePage(): ReactElement {
       const detailSnapshot = queryClient.getQueryData<Issue>(detailKey)
 
       if (listSnapshot !== undefined) {
+        // When the current status filter excludes the destination, the moved
+        // card no longer matches the visible page, so it is removed immediately.
+        // Otherwise it is appended to the destination among loaded cards and
+        // invalidation reconciles totals/membership.
+        const statusFiltered =
+          filters.status !== null && filters.status !== vars.targetStatusCode
+        const nextItems = statusFiltered
+          ? listSnapshot.items.filter((item) => item.issueKey !== vars.issueKey)
+          : applyOptimisticMove(listSnapshot.items, {
+              draggedKey: vars.issueKey,
+              targetStatusCode: vars.targetStatusCode,
+              targetIndex: Number.MAX_SAFE_INTEGER,
+            })
         queryClient.setQueryData(listKey, {
           ...listSnapshot,
-          items: applyOptimisticMove(listSnapshot.items, {
-            draggedKey: vars.issueKey,
-            targetStatusCode: vars.targetStatusCode,
-            targetIndex: vars.targetIndex,
-          }),
+          items: nextItems,
         })
       }
       if (detailSnapshot !== undefined && detailSnapshot.issueKey === vars.issueKey) {
@@ -526,11 +561,13 @@ export function IssueWorkspacePage(): ReactElement {
 
       return { listSnapshot, detailSnapshot, listKey, detailKey, activityKey }
     },
-    onSuccess: (moved: Issue, _vars) => {
-      setBannerAlert({ kind: 'info', message: `${moved.issueKey} taşındı.` })
-      // Reconcile the moved issue with the authoritative server response. The
-      // pending-move invariant locks selection, so the moved issue is still the
-      // selected issue; guard the comparison to be safe against any drift.
+    onSuccess: (moved: Issue, vars) => {
+      // Persistent, controlled page-level status announcement.
+      setMoveAnnouncement(
+        `${moved.issueKey}, ${statusLabel(vars.targetStatusCode)} durumuna taşındı.`,
+      )
+      // Reconcile the moved issue with the authoritative server response when it
+      // is still present in the visible page.
       const listKey = ['issues', key, filters]
       const list = queryClient.getQueryData<IssuePage>(listKey)
       if (list !== undefined) {
@@ -544,7 +581,15 @@ export function IssueWorkspacePage(): ReactElement {
       if (routeIssueKey === moved.issueKey) {
         queryClient.setQueryData(['issue', moved.issueKey], moved)
       }
-      setFocusIssueKey(moved.issueKey)
+      // Focus the moved card's status trigger when it is still rendered (its new
+      // status matches the active filter); otherwise land on the list heading.
+      const stillVisible =
+        list?.items.some((item) => item.issueKey === moved.issueKey) === true
+      if (stillVisible) {
+        setFocusStatusIssueKey(moved.issueKey)
+      } else {
+        setFocusIntent('list-heading')
+      }
     },
     onError: async (error: unknown, vars, context) => {
       // Restore every changed cache entry exactly.
@@ -572,10 +617,11 @@ export function IssueWorkspacePage(): ReactElement {
         }
       }
       setBannerAlert({ kind: 'error', message: GENERIC_ERROR })
-      setFocusIssueKey(vars.issueKey)
+      setFocusStatusIssueKey(vars.issueKey)
     },
     onSettled: (_data, _error, vars) => {
       releaseMutation('move')
+      setMovePendingKey(null)
       void Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['issues', key],
@@ -751,20 +797,11 @@ export function IssueWorkspacePage(): ReactElement {
     setFocusIntent('archive')
   }
 
-  const handleMove = (
+  const handleStatusChange = (
     issueKey: string,
     targetStatusCode: string,
-    targetIndex: number,
   ): boolean => {
     if (anyMutationPending || mutationLocked()) {
-      return false
-    }
-    // Fail-closed: reordering is only valid on a complete, unfiltered,
-    // single-page active board. A filtered/paginated subset index does not map
-    // to the backend's full-column ordering, so the move is refused regardless
-    // of how it was invoked (pointer/keyboard DnD, move menu, or a stale
-    // callback).
-    if (!boardCanMove) {
       return false
     }
     const issues = issuesQuery.data?.items
@@ -774,31 +811,22 @@ export function IssueWorkspacePage(): ReactElement {
     }
     // Archived issues are read-only and can never be moved.
     const dragged = issues.find((i) => i.issueKey === issueKey)
-    if (dragged?.archived === true) {
+    if (dragged === undefined || dragged.archived === true) {
       return false
     }
-    const result = computeMove({
-      workflowStatuses: statuses,
-      issues,
-      draggedKey: issueKey,
-      targetStatusCode,
-      targetIndex,
-    })
-    // A no-op or invalid/unknown target never reaches the API and never
-    // announces a successful move.
-    if (result.kind !== 'move') {
+    // Only a real, valid, non-current workflow status reaches the API.
+    const validStatus = statuses.some((s) => s.code === targetStatusCode)
+    if (!validStatus || targetStatusCode === dragged.statusCode) {
       return false
     }
     if (!tryAcquireMutation('move')) {
       return false
     }
+    setMovePendingKey(issueKey)
     moveMutation.mutate({
       issueKey,
       targetStatusCode,
-      beforeIssueKey: result.payload.beforeIssueKey,
-      afterIssueKey: result.payload.afterIssueKey,
-      expectedVersion: result.expectedVersion,
-      targetIndex: result.targetIndex,
+      expectedVersion: dragged.version,
     })
     return true
   }
@@ -821,6 +849,13 @@ export function IssueWorkspacePage(): ReactElement {
         inert={drawerOpen ? true : undefined}
       >
         <nav className="issue-workspace__nav" aria-label="Proje gezinme">
+          <Link
+            className="issue-workspace__back issue-workspace__back--current"
+            to={`/projects/${key}/board`}
+            aria-current="page"
+          >
+            Pano
+          </Link>
           <Link className="issue-workspace__back" to={`/projects/${key}/settings`}>
             Proje ayarları
           </Link>
@@ -835,7 +870,7 @@ export function IssueWorkspacePage(): ReactElement {
               <h2 className="issue-workspace__heading">Proje yüklenemedi</h2>
             ) : (
               <h2 className="issue-workspace__heading">
-                {projectQuery.data?.name ?? 'İssue yönetimi'}
+                {projectQuery.data?.name ?? 'İş yönetimi'}
               </h2>
             )}
             <p className="issue-workspace__key">{key}</p>
@@ -849,7 +884,7 @@ export function IssueWorkspacePage(): ReactElement {
               disabled={anyMutationPending}
               aria-disabled={anyMutationPending}
             >
-              Yeni issue
+              Yeni iş
             </button>
           )}
         </header>
@@ -862,6 +897,11 @@ export function IssueWorkspacePage(): ReactElement {
             {bannerAlert.message}
           </p>
         )}
+
+        {/* Persistent page-level polite region for completed status changes. */}
+        <p className="issue-workspace__live" aria-live="polite">
+          {moveAnnouncement}
+        </p>
 
         {projectQuery.isLoading && (
           <p className="issue-workspace__status" role="status">
@@ -925,12 +965,12 @@ export function IssueWorkspacePage(): ReactElement {
             tabIndex={-1}
             ref={listHeadingRef}
           >
-            İssue’lar
+            İşler
           </h3>
 
           {issuesQuery.isLoading && (
             <p className="issue-workspace__status" role="status">
-              İssue’lar yükleniyor…
+              İşler yükleniyor…
             </p>
           )}
 
@@ -941,7 +981,11 @@ export function IssueWorkspacePage(): ReactElement {
           )}
 
           {issuesQuery.isSuccess && issuesQuery.data.items.length === 0 && (
-            <p className="issue-workspace__empty">Henüz issue yok.</p>
+            hasActiveFilters ? (
+              <p className="issue-workspace__empty">Filtrelere uyan iş yok.</p>
+            ) : (
+              <p className="issue-workspace__empty">Henüz iş yok.</p>
+            )
           )}
 
           {issuesQuery.isSuccess && issuesQuery.data.items.length > 0 && (
@@ -949,21 +993,17 @@ export function IssueWorkspacePage(): ReactElement {
               workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
               issues={issuesQuery.data.items}
               selectedIssueKey={routeIssueKey}
-              canMove={boardCanMove}
+              canMove={canChangeStatus}
               moveDisabled={anyMutationPending}
+              movePendingKey={movePendingKey}
               selectionDisabled={anyMutationPending}
               includeArchived={filters.archive !== 'active'}
+              onCreate={canMutate ? openCreate : undefined}
               onSelect={handleSelect}
-              onMove={handleMove}
+              onStatusChange={handleStatusChange}
               statusLabel={statusLabel}
               assigneeLabel={assigneeLabel}
             />
-          )}
-
-          {boardMoveLocked && (
-            <p className="issue-workspace__move-note" role="note">
-              Filtrelenmiş veya sayfalanmış görünümde kartlar taşınamaz.
-            </p>
           )}
 
           {issuesQuery.isSuccess && (issuesQuery.data.totalPages ?? 0) > 1 && (
@@ -1008,7 +1048,7 @@ export function IssueWorkspacePage(): ReactElement {
             selectedIssue !== undefined &&
             selectedIssue.projectKey !== key && (
               <p className="issue-workspace__error" role="alert">
-                Bu issue bu projede bulunamadı.
+                Bu iş bu projede bulunamadı.
               </p>
             )}
         </section>
@@ -1060,7 +1100,7 @@ export function IssueWorkspacePage(): ReactElement {
               {confirmingArchive && (
                 <span className="issue-drawer-actions__confirm">
                   <span className="issue-drawer-actions__confirm-text">
-                    Bu issue arşivlensin mi?
+                    Bu iş arşivlensin mi?
                   </span>
                   <button
                     type="button"
