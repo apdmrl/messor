@@ -1,7 +1,13 @@
-import type { CsrfTokenResponse, ProblemDetails } from '../features/auth/types'
+import type { ProblemDetails } from '../features/auth/types'
 
-const CSRF_URL = '/api/auth/csrf'
+const CSRF_BOOTSTRAP_URL = '/api/auth/me'
+const CSRF_COOKIE = 'XSRF-TOKEN'
+const CSRF_HEADER = 'X-XSRF-TOKEN'
 
+interface CsrfToken {
+  headerName: string
+  token: string
+}
 const GENERIC_ERROR_CODE = 'HTTP_ERROR'
 const GENERIC_ERROR_DETAIL = 'İstek tamamlanamadı.'
 
@@ -14,10 +20,11 @@ const GENERIC_ERROR_DETAIL = 'İstek tamamlanamadı.'
 const STALE_AUTHENTICATION_CONTEXT = 'STALE_AUTHENTICATION_CONTEXT'
 
 /**
- * Module-private CSRF token cache shared by every API client (auth and
- * project mutations). Never persisted to storage or DOM.
+ * Module-private snapshot of the browser-managed CSRF cookie, shared by every
+ * API client. It is cleared at authentication boundaries and on invalid-token
+ * responses; the next mutation re-reads the current cookie value.
  */
-let csrfToken: CsrfTokenResponse | null = null
+let csrfToken: CsrfToken | null = null
 
 /**
  * Module-private authentication epoch. Every request captures the current epoch
@@ -86,17 +93,6 @@ function isProblemDetails(value: unknown): value is ProblemDetails {
   )
 }
 
-function isCsrfTokenResponse(value: unknown): value is CsrfTokenResponse {
-  if (typeof value !== 'object' || value === null) {
-    return false
-  }
-  const candidate = value as Record<string, unknown>
-  return (
-    typeof candidate.headerName === 'string' &&
-    typeof candidate.parameterName === 'string' &&
-    typeof candidate.token === 'string'
-  )
-}
 
 /** Discard the cached CSRF token (e.g. after login, logout, or an invalid token). */
 export function clearCsrfToken(): void {
@@ -180,37 +176,52 @@ async function handleNonOkResponse(
 }
 
 /**
- * Return the cached CSRF token, fetching a fresh one from the server when the
- * cache is empty. The token is held only in memory.
+ * Read the CSRF token from the non-HttpOnly cookie managed by Spring Security.
+ * When the cookie is absent (initial load or a login/logout rotation), a GET to
+ * `/api/auth/me` forces the CSRF filter to issue a fresh cookie. The response
+ * status is intentionally ignored: anonymous 401 and authenticated 200 both
+ * carry the cookie.
  *
- * The epoch is captured before fetching. The returned token is cached only if
- * that captured epoch is still current when the response completes, so a stale
- * token fetch may return its token to its stale caller but never repopulates
- * the shared cache.
+ * The token is cached only while the captured authentication epoch remains
+ * current, preventing an old principal's bootstrap from repopulating the new
+ * principal's cache.
  */
-export async function fetchCsrfToken(): Promise<CsrfTokenResponse> {
+function readCsrfTokenCookie(): string | null {
+  if (typeof document === 'undefined') {
+    return null
+  }
+  const entry = document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${CSRF_COOKIE}=`))
+  return entry ? entry.slice(CSRF_COOKIE.length + 1) : null
+}
+
+export async function fetchCsrfToken(): Promise<CsrfToken> {
   if (csrfToken) {
     return csrfToken
   }
 
   const capturedEpoch = authenticationEpoch
-  const response = await fetch(CSRF_URL, { credentials: 'include' })
-  if (!response.ok) {
-    throw await handleNonOkResponse(response, capturedEpoch)
+  let token = readCsrfTokenCookie()
+  if (token === null) {
+    await fetch(CSRF_BOOTSTRAP_URL, { credentials: 'include' })
+    assertCurrentEpoch(capturedEpoch)
+    token = readCsrfTokenCookie()
   }
 
-  const body: unknown = await safeJson(response)
-  if (!isCsrfTokenResponse(body)) {
-    throw new ApiError(response.status, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
+  if (token === null) {
+    throw new ApiError(0, GENERIC_ERROR_CODE, GENERIC_ERROR_DETAIL)
   }
 
+  const currentToken = { headerName: CSRF_HEADER, token }
   if (capturedEpoch === authenticationEpoch) {
-    csrfToken = body
+    csrfToken = currentToken
   }
-  return body
+  return currentToken
 }
 
-function csrfHeaders(token: CsrfTokenResponse): Record<string, string> {
+function csrfHeaders(token: CsrfToken): Record<string, string> {
   return { [token.headerName]: token.token }
 }
 
@@ -260,11 +271,12 @@ export interface ApiRequestOptions {
   method?: string
   body?: BodyInit | null
   headers?: Record<string, string>
-  /** Send the in-memory CSRF token header (required for state-changing calls). */
+  /** Send the browser-managed CSRF cookie value as the echo header. */
   csrf?: boolean
   /**
-   * When true, an INVALID_CSRF_TOKEN response clears the cached token, fetches
-   * a fresh one, and retries the request exactly once. Defaults to true.
+   * When true, an INVALID_CSRF_TOKEN response clears the cached cookie snapshot,
+   * re-reads the current browser cookie, and retries exactly once. Defaults to
+   * true.
    */
   retryOnInvalidCsrf?: boolean
 }
@@ -273,9 +285,9 @@ export interface ApiRequestOptions {
  * Shared API request helper.
  *
  * - Always sends `credentials: 'include'`.
- * - For mutations (`csrf: true`) attaches the in-memory CSRF token.
+ * - For mutations (`csrf: true`) attaches `X-XSRF-TOKEN` from the cookie.
  * - Converts RFC 9457 Problem Details responses into a safe typed `ApiError`.
- * - On INVALID_CSRF_TOKEN clears the token and retries once after re-fetching.
+ * - On INVALID_CSRF_TOKEN clears the cached snapshot and retries once.
  * - Never retries more than once.
  * - Malformed/empty error bodies produce a fixed fallback that leaks no
  *   internal content.

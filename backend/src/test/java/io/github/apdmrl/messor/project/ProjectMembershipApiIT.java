@@ -72,8 +72,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("membership-csrf-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MCSRF1", "Original");
 
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"email":"someone@example.com","role":"MEMBER"}
@@ -82,8 +81,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
 
-		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, UUID.randomUUID())
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, UUID.randomUUID()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"role":"VIEWER","expectedVersion":0}
@@ -92,8 +90,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("INVALID_CSRF_TOKEN"));
 
-		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, UUID.randomUUID())
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, UUID.randomUUID()).cookie(admin.session(), admin.csrfCookie())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isForbidden())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
@@ -110,8 +107,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession target = login("membership-target@example.com", UserRole.USER);
 
 		// Add
-		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -128,8 +124,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(addBody.get("version").asLong()).isEqualTo(0L);
 
 		// List
-		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key)
-				.cookie(admin.session()))
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andReturn();
@@ -137,8 +132,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(listBody.size()).isEqualTo(2);
 
 		// Change role
-		MvcResult change = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult change = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -152,8 +146,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(changeBody.get("version").asLong()).isEqualTo(1L);
 
 		// Remove
-		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "1"))
 				.andExpect(status().isNoContent());
@@ -169,8 +162,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		LoginSession target = login("membership-lead-target@example.com", UserRole.USER);
 
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(lead.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -179,7 +171,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.role").value("MEMBER"));
 
-		mockMvc.perform(get("/api/projects/{key}/members", key).cookie(lead.session()))
+		mockMvc.perform(get("/api/projects/{key}/members", key).cookie(lead.session(), lead.csrfCookie()))
 				.andExpect(status().isOk());
 	}
 
@@ -192,7 +184,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		// A MEMBER may read the member list (READ permission) and receives safe DTOs.
-		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(member.session()))
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andReturn();
@@ -203,8 +195,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 						"userAccount", "projectId", "membershipId", "createdAt", "updatedAt");
 
 		// But a MEMBER may not mutate memberships.
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -224,7 +215,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, viewer.userId(), "VIEWER");
 
 		// A VIEWER may read the member list (READ permission) and receives safe DTOs.
-		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(viewer.session()))
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(viewer.session(), viewer.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andReturn();
@@ -235,8 +226,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 						"userAccount", "projectId", "membershipId", "createdAt", "updatedAt");
 
 		// But a VIEWER may not mutate memberships.
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(viewer.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -256,8 +246,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		// The outsider cannot list members, and the response must not reveal
 		// whether the project exists or whether the target account exists.
-		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key)
-				.cookie(outsider.session()))
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andReturn();
@@ -266,8 +255,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		// A mutation attempt by a nonmember must also be 404, not 403, and must
 		// not reveal whether the target account exists.
-		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(outsider.session())
+		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -289,8 +277,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		login("membership-normalize-target@example.com", UserRole.USER);
 
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -306,8 +293,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("membership-invalid-email-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MINV01", "Invalid email project");
 
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -324,8 +310,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "MIROL1", "Invalid role project");
 
 		// Null role
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -336,8 +321,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		// Unknown role value
-		mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -357,8 +341,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, target.userId(), "MEMBER");
 
 		// Missing version
-		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -369,8 +352,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 
 		// Negative version
-		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -388,8 +370,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		login("membership-safe-target@example.com", UserRole.USER);
 
-		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -411,8 +392,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession target = login("membership-dup-target@example.com", UserRole.USER);
 		addMember(key, target.userId(), "MEMBER");
 
-		MvcResult dup = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult dup = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -432,8 +412,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("membership-unknown-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "MUNK01", "Unknown email project");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -457,8 +436,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		inactive.disable();
 		userAccountRepository.saveAndFlush(inactive);
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -480,8 +458,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession target = login("membership-missing-target@example.com", UserRole.USER);
 
 		// PATCH a user who is not a member
-		MvcResult patch = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult patch = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -494,8 +471,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(patchBody.get("code").asText()).isEqualTo("PROJECT_MEMBER_NOT_FOUND");
 
 		// DELETE a user who is not a member
-		MvcResult del = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult del = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isNotFound())
@@ -511,8 +487,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "MFNL01", "Final lead project");
 
 		// The creator is the only PROJECT_LEAD. Demote them.
-		MvcResult demote = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, admin.userId())
-				.cookie(admin.session())
+		MvcResult demote = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, admin.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -525,8 +500,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(demoteBody.get("code").asText()).isEqualTo("LAST_PROJECT_LEAD_REQUIRED");
 
 		// Remove the final lead.
-		MvcResult remove = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, admin.userId())
-				.cookie(admin.session())
+		MvcResult remove = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, admin.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isConflict())
@@ -545,8 +519,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, secondLead.userId(), "PROJECT_LEAD");
 
 		// Demote the creator lead; another lead remains.
-		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, admin.userId())
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, admin.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -556,8 +529,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.role").value("MEMBER"));
 
 		// Remove the remaining lead; the creator is now a member, so no lead remains.
-		MvcResult remove = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, secondLead.userId())
-				.cookie(admin.session())
+		MvcResult remove = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, secondLead.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isConflict())
@@ -577,8 +549,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 
 		// Two PROJECT_LEAD memberships exist. Remove the second lead with the
 		// correct expectedVersion; the creator lead remains.
-		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, secondLead.userId())
-				.cookie(admin.session())
+		mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, secondLead.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isNoContent());
@@ -609,8 +580,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, target.userId(), "MEMBER");
 
 		// First change bumps version to 1.
-		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -620,8 +590,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.version").value(1));
 
 		// Stale PATCH with version 0.
-		MvcResult stalePatch = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult stalePatch = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -634,8 +603,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(stalePatchBody.get("code").asText()).isEqualTo("VERSION_CONFLICT");
 
 		// Stale DELETE with version 0.
-		MvcResult staleDelete = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult staleDelete = mockMvc.perform(delete("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.param("expectedVersion", "0"))
 				.andExpect(status().isConflict())
@@ -653,8 +621,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		LoginSession target = login("membership-versioning-target@example.com", UserRole.USER);
 
 		// Add -> version 0
-		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult add = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -666,8 +633,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		assertThat(addBody.get("version").asLong()).isEqualTo(0L);
 
 		// Change -> version 1
-		MvcResult change = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId())
-				.cookie(admin.session())
+		MvcResult change = mockMvc.perform(patch("/api/projects/{key}/members/{userId}", key, target.userId()).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -696,8 +662,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		// the membership service or database is reached. This is a validation
 		// test only; database constraint classification is covered by
 		// ProjectMemberServiceTest.
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -723,8 +688,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, alpha.userId(), "VIEWER");
 		addMember(key, beta.userId(), "MEMBER");
 
-		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key)
-				.cookie(admin.session()))
+		MvcResult list = mockMvc.perform(get("/api/projects/{key}/members", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 
@@ -739,8 +703,7 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 	// --- Helpers ---
 
 	private String createProject(LoginSession session, String key, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -772,35 +735,26 @@ class ProjectMembershipApiIT extends PostgresIntegrationTestSupport {
 				role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(
-				account.getId(),
-				postLoginSession,
-				csrfAfterBody.get("headerName").asText(),
-				csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader, String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 
 }

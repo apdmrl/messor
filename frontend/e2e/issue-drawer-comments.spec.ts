@@ -112,16 +112,8 @@ async function mockWorkspace(
     makeIssue('MES-2', 2, 'Second task'),
   ]
 
-  await page.route('**/api/auth/csrf', (route) => {
-    route.fulfill({
-      status: 200,
-      contentType: JSON_JSON,
-      body: JSON.stringify({
-        headerName: 'X-Test-Csrf',
-        parameterName: '_csrf',
-        token: 'masked-token',
-      }),
-    })
+  await page.addInitScript(() => {
+    document.cookie = 'XSRF-TOKEN=masked-token; path=/'
   })
   await page.route('**/api/projects/MES', (route) => {
     route.fulfill({ status: 200, contentType: JSON_JSON, body: JSON.stringify(PROJECT) })

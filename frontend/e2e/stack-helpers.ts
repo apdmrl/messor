@@ -62,15 +62,29 @@ export function uniqueProjectKey(prefix: string): string {
 }
 
 /**
+ * Read the browser-managed CSRF cookie, forcing the backend filter to issue it
+ * first when authentication just rotated the token.
+ */
+export async function csrfProof(page: Page): Promise<{ headerName: string; token: string }> {
+  await page.request.get('/api/auth/me')
+  const cookie = (await page.context().cookies()).find(
+    (candidate) => candidate.name === 'XSRF-TOKEN',
+  )
+  if (cookie === undefined || cookie.value === '') {
+    throw new Error('Backend did not issue the XSRF-TOKEN cookie.')
+  }
+  return { headerName: 'X-XSRF-TOKEN', token: cookie.value }
+}
+
+/**
  * Perform a same-origin API request through the page's APIRequestContext.
  * `page.request` resolves relative URLs against the configured baseURL and
  * shares the browser context's cookies, so the real server-side session and
  * CSRF state flow through the test network stack. It can be called before any
  * navigation (the page may still be on about:blank).
  *
- * `csrf: true` first fetches a fresh token and attaches it with the header
- * name returned by the server. JSON bodies are stringified; string bodies are
- * sent as-is (used by the form-encoded login).
+ * `csrf: true` reads the browser-managed token cookie and attaches its fixed
+ * echo header. JSON bodies are stringified; string bodies are sent as-is.
  */
 export async function apiFetch(
   page: Page,
@@ -89,8 +103,7 @@ export async function apiFetch(
     }
   }
   if (options.csrf === true) {
-    const csrfResponse = await page.request.get('/api/auth/csrf')
-    const csrf = (await csrfResponse.json()) as { headerName: string; token: string }
+    const csrf = await csrfProof(page)
     headers[csrf.headerName] = csrf.token
   }
   const response = await page.request.fetch(path, {

@@ -1,7 +1,6 @@
 package io.github.apdmrl.messor.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,74 +36,34 @@ class CsrfEndpointIT extends PostgresIntegrationTestSupport {
 	private ServerProperties serverProperties;
 
 	@Test
-	void csrfEndpointReturnsExpectedContract() throws Exception {
-		MvcResult result = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-				.andExpect(header().string("Cache-Control", containsString("no-store")))
-				.andReturn();
+	void csrfTokenCookieIsIssuedOnResponses() throws Exception {
+		MvcResult result = mockMvc.perform(get("/api/private-probe")).andReturn();
 
-		JsonNode body = csrfBody(result);
-
-		assertThat(body.size()).isEqualTo(3);
-		assertThat(body.get("headerName").asText()).isEqualTo("X-CSRF-TOKEN");
-		assertThat(body.get("parameterName").asText()).isEqualTo("_csrf");
-		assertThat(body.get("token").asText()).isNotBlank();
+		Cookie cookie = result.getResponse().getCookie("XSRF-TOKEN");
+		assertThat(cookie).as("XSRF-TOKEN cookie must be issued").isNotNull();
+		assertThat(cookie.getValue()).isNotBlank();
+		assertThat(cookie.isHttpOnly())
+				.as("XSRF-TOKEN cookie must be readable by the SPA")
+				.isFalse();
+		assertThat(cookie.getPath()).as("XSRF-TOKEN cookie path must be the app root").isEqualTo("/");
 	}
 
 	@Test
-	void csrfEndpointDoesNotWriteTokenCookie() throws Exception {
-		MvcResult result = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-
-		assertThat(result.getResponse().getCookie("XSRF-TOKEN")).isNull();
-	}
-
-	@Test
-	void twoMaskedTokensDifferForSameSession() throws Exception {
-		MvcResult first = fetchCsrfToken();
-		Cookie session = sessionCookie(first);
-
-		MvcResult second = mockMvc.perform(get("/api/auth/csrf").cookie(session))
-				.andExpect(status().isOk())
-				.andReturn();
-
-		String firstToken = csrfBody(first).get("token").asText();
-		String secondToken = csrfBody(second).get("token").asText();
-
-		assertThat(firstToken).isNotEqualTo(secondToken);
-	}
-
-	@Test
-	void validSameSessionTokenPassesCsrfFilter() throws Exception {
-		MvcResult csrf = fetchCsrfToken();
-		JsonNode body = csrfBody(csrf);
-		Cookie session = sessionCookie(csrf);
+	void validCookieTokenPassesCsrfFilter() throws Exception {
+		Cookie csrf = csrfCookie();
+		String token = csrf.getValue();
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(session)
-				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
-				.header(body.get("headerName").asText(), body.get("token").asText()))
-				.andReturn();
-
-		assertThat(login.getResponse().getStatus()).isNotEqualTo(403);
-	}
-
-	@Test
-	void tokenIsSentUsingDynamicHeaderNameNotBodyOrUrl() throws Exception {
-		MvcResult csrf = fetchCsrfToken();
-		JsonNode body = csrfBody(csrf);
-		Cookie session = sessionCookie(csrf);
-
-		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(session)
+				.cookie(csrf)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", "admin@demo.messor.app")
-				.header(body.get("headerName").asText(), body.get("token").asText()))
+				.param("password", "not-the-password")
+				.header("X-XSRF-TOKEN", token))
 				.andReturn();
 
-		assertThat(login.getResponse().getStatus()).isNotEqualTo(403);
+		assertThat(login.getResponse().getStatus())
+				.as("valid CSRF token must pass the filter (outcome is auth, not 403)")
+				.isNotEqualTo(403);
 	}
 
 	@Test
@@ -122,7 +81,7 @@ class CsrfEndpointIT extends PostgresIntegrationTestSupport {
 		String invalidToken = "not-a-valid-token";
 
 		MvcResult result = mockMvc.perform(post("/api/auth/login")
-				.header("X-CSRF-TOKEN", invalidToken))
+				.header("X-XSRF-TOKEN", invalidToken))
 				.andExpect(status().isForbidden())
 				.andReturn();
 
@@ -134,16 +93,16 @@ class CsrfEndpointIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void tokenFromSessionAUsedWithSessionBReturnsProblemDetails() throws Exception {
-		MvcResult sessionA = fetchCsrfToken();
-		JsonNode bodyA = csrfBody(sessionA);
+	void tokenFromDifferentBrowserIsRejected() throws Exception {
+		Cookie firstCookie = csrfCookie();
+		String firstToken = firstCookie.getValue();
 
-		MvcResult sessionB = fetchCsrfToken();
-		Cookie cookieB = sessionCookie(sessionB);
+		Cookie secondCookie = csrfCookie();
+		assertThat(secondCookie.getValue()).isNotEqualTo(firstToken);
 
 		MvcResult result = mockMvc.perform(post("/api/auth/login")
-				.cookie(cookieB)
-				.header(bodyA.get("headerName").asText(), bodyA.get("token").asText()))
+				.cookie(secondCookie)
+				.header("X-XSRF-TOKEN", firstToken))
 				.andExpect(status().isForbidden())
 				.andReturn();
 
@@ -190,12 +149,6 @@ class CsrfEndpointIT extends PostgresIntegrationTestSupport {
 	}
 
 	@Test
-	void csrfEndpointIsPublic() throws Exception {
-		mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk());
-	}
-
-	@Test
 	void loginWithoutTokenIsRejectedDespitePermitAll() throws Exception {
 		mockMvc.perform(post("/api/auth/login"))
 				.andExpect(status().isForbidden());
@@ -227,18 +180,16 @@ class CsrfEndpointIT extends PostgresIntegrationTestSupport {
 		return objectMapper.readTree(result.getResponse().getContentAsString());
 	}
 
-	private MvcResult fetchCsrfToken() throws Exception {
-		return mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-	}
-
-	private JsonNode csrfBody(MvcResult result) throws Exception {
-		return objectMapper.readTree(result.getResponse().getContentAsString());
-	}
-
-	private Cookie sessionCookie(MvcResult result) {
-		return result.getResponse().getCookie("SESSION");
+	/**
+	 * Bootstrap a CSRF token by hitting a request that flows through the CSRF
+	 * filter. The anonymous protected probe returns 401 but still writes the
+	 * {@code XSRF-TOKEN} cookie, which the SPA would read from the browser.
+	 */
+	private Cookie csrfCookie() throws Exception {
+		MvcResult result = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie cookie = result.getResponse().getCookie("XSRF-TOKEN");
+		assertThat(cookie).isNotNull();
+		return cookie;
 	}
 
 }

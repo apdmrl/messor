@@ -85,11 +85,14 @@ class LogoutIT extends PostgresIntegrationTestSupport {
 				.contains("no-store");
 
 		List<String> setCookies = logout.headers().allValues("Set-Cookie");
-		assertThat(setCookies)
+		List<String> sessionDeletions = setCookies.stream()
+				.filter(header -> header.startsWith("SESSION="))
+				.toList();
+		assertThat(sessionDeletions)
 				.as("logout must produce exactly one session cookie deletion header")
 				.hasSize(1);
 
-		String deletionHeader = setCookies.get(0);
+		String deletionHeader = sessionDeletions.get(0);
 		assertThat(deletionHeader)
 				.startsWith("SESSION=")
 				.contains("Max-Age=0")
@@ -199,18 +202,16 @@ class LogoutIT extends PostgresIntegrationTestSupport {
 	}
 
 	private LoginSession login(String email, String password) throws Exception {
-		HttpResponse<byte[]> csrf = get("/api/auth/csrf");
-		assertThat(csrf.statusCode()).isEqualTo(200);
-		JsonNode csrfBody = objectMapper.readTree(decodeUtf8(csrf));
-		String headerName = csrfBody.get("headerName").asText();
-		String token = csrfBody.get("token").asText();
+		// Bootstrap a CSRF token cookie before the state-changing login.
+		get("/api/private-probe");
+		String token = csrfCookieValue();
 
 		String form = "email=" + URLEncoder.encode(email, StandardCharsets.UTF_8)
 				+ "&password=" + URLEncoder.encode(password, StandardCharsets.UTF_8);
 
 		HttpRequest request = HttpRequest.newBuilder(uri("/api/auth/login"))
 				.header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-				.header(headerName, token)
+				.header("X-XSRF-TOKEN", token)
 				.POST(HttpRequest.BodyPublishers.ofString(form))
 				.build();
 
@@ -222,14 +223,28 @@ class LogoutIT extends PostgresIntegrationTestSupport {
 				.as("login must establish an authenticated session cookie")
 				.isPresent();
 
-		HttpResponse<byte[]> postLoginCsrf = get("/api/auth/csrf");
-		assertThat(postLoginCsrf.statusCode()).isEqualTo(200);
-		JsonNode postLoginBody = objectMapper.readTree(decodeUtf8(postLoginCsrf));
+		String postLoginToken = ensureCsrfToken();
 
-		return new LoginSession(
-				postLoginBody.get("headerName").asText(),
-				postLoginBody.get("token").asText(),
-				sessionCookie.get().getValue());
+		return new LoginSession("X-XSRF-TOKEN", postLoginToken, sessionCookie.get().getValue());
+	}
+
+	private String csrfCookieValue() {
+		return cookieManager.getCookieStore().getCookies().stream()
+				.filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+				.map(HttpCookie::getValue)
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("XSRF-TOKEN cookie not issued"));
+	}
+
+	private String ensureCsrfToken() throws Exception {
+		Optional<HttpCookie> existing = cookieManager.getCookieStore().getCookies().stream()
+				.filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+				.findFirst();
+		if (existing.isEmpty() || existing.get().getValue().isEmpty()) {
+			// Force a fresh token cookie after a reissued session.
+			get("/api/private-probe");
+		}
+		return csrfCookieValue();
 	}
 
 	private HttpResponse<byte[]> postLogout(String headerName, String token) throws Exception {

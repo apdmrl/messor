@@ -88,8 +88,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE01", "Admin project");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -164,8 +163,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession lead = login("issue-lead@example.com", UserRole.USER);
 		addMember(key, lead.userId(), "PROJECT_LEAD");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(lead.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -184,8 +182,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("issue-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -201,8 +198,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-nullassign-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE04", "Null assignee");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -220,8 +216,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("issue-viewerassign@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -237,8 +232,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-seq-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE06", "Sequential");
 
-		MvcResult first = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult first = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -251,8 +245,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		assertThat(firstBody.get("issueKey").asText()).isEqualTo("ISSUE06-1");
 		assertThat(firstBody.get("rank").asLong()).isEqualTo(1024L);
 
-		MvcResult second = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult second = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -274,8 +267,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession assignee = login("issue-activity-assignee@example.com", UserRole.USER);
 		addMember(key, assignee.userId(), "MEMBER");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -329,8 +321,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("issue-viewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -353,8 +344,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LoginSession outsider = login("issue-nonmember@example.com", UserRole.USER);
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(outsider.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -374,16 +364,13 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 	void anonymousCreateReturns401() throws Exception {
 		// Obtain a CSRF token for the anonymous session (the csrf endpoint is
 		// permitAll) so the request passes CSRF but fails authentication.
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
 		Cookie anonSession = csrf.getResponse().getCookie("SESSION");
 
-		mockMvc.perform(post("/api/projects/ANY/issues")
-				.cookie(anonSession)
+		mockMvc.perform(post("/api/projects/ANY/issues").cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_JSON)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText())
+				.header("X-XSRF-TOKEN", csrfBody.getValue())
 				.content("""
 						{"type":"STORY","title":"Anon","description":null,"assigneeId":null}
 						"""))
@@ -398,8 +385,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-csrf-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE10", "Csrf project");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"type":"STORY","title":"No csrf","description":null,"assigneeId":null}
@@ -426,8 +412,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "ISSUE11", "Bad assignee");
 
 		// Unknown UUID that is not a user at all.
-		MvcResult unknown = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult unknown = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -442,8 +427,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		// A real user who is not a member of the project.
 		LoginSession outsider = login("issue-badassign-outsider@example.com", UserRole.USER);
-		MvcResult nonmember = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult nonmember = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -477,8 +461,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		userAccountRepository.saveAndFlush(disabled);
 		addMember(key, disabled.getId(), "MEMBER");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -505,8 +488,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-type-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE12", "Type validation");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -517,8 +499,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
 				.andExpect(jsonPath("$.detail").value("İstek doğrulama kurallarını karşılamıyor."));
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -535,8 +516,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-title-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE13", "Title validation");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -554,8 +534,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "ISSUE14", "Long title");
 
 		String longTitle = "x".repeat(201);
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -573,8 +552,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "ISSUE15", "Long description");
 
 		String longDescription = "y".repeat(10001);
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -591,8 +569,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-malformedassign-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE16", "Malformed assignee");
 
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -614,8 +591,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-tamper-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE17", "Tamper");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -692,8 +668,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "ISSUE18", "Failed create");
 
 		// A validation failure must not create rows or advance the counter.
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -706,8 +681,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// A forbidden attempt must not create rows or advance the counter either.
 		LoginSession viewer = login("issue-failed-viewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(viewer.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -723,8 +697,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("issue-safe-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "ISSUE20", "Safe response");
 
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -747,8 +720,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "LIFE01", "Get project");
 		String issueKey = createIssue(admin, key, "STORY", "Get me", null, null);
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", issueKey)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -769,7 +741,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession lead = login("lifecycle-getlead@example.com", UserRole.USER);
 		addMember(key, lead.userId(), "PROJECT_LEAD");
 
-		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(lead.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(lead.session(), lead.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.issueKey").value(issueKey));
 	}
@@ -783,7 +755,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-getmember@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(member.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.issueKey").value(issueKey));
 	}
@@ -797,7 +769,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("lifecycle-getviewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(viewer.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(viewer.session(), viewer.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.issueKey").value(issueKey));
 	}
@@ -811,11 +783,11 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession viewer = login("lifecycle-viewer@example.com", UserRole.USER);
 		addMember(key, viewer.userId(), "VIEWER");
 
-		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(viewer.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(viewer.session(), viewer.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.issueKey").value(issueKey));
 
-		mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(viewer.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(viewer.session(), viewer.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON));
 	}
@@ -827,8 +799,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "STORY", "Hidden issue", null, null);
 
 		LoginSession outsider = login("lifecycle-404-outsider@example.com", UserRole.USER);
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", issueKey)
-				.cookie(outsider.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -846,8 +817,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-404key-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", "LIFE07-999")
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", "LIFE07-999").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -865,8 +835,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-404mal-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", "NOT-A-KEY")
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}", "NOT-A-KEY").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -895,7 +864,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		jdbcTemplate.update("UPDATE issue SET archived = TRUE, version = version + 1"
 				+ " WHERE human_key = ?", issueKey);
 
-		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(admin.session()))
+		mockMvc.perform(get("/api/issues/{issueKey}", issueKey).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.issueKey").value(issueKey))
 				.andExpect(jsonPath("$.archived").value(true));
@@ -916,8 +885,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		Long counterBefore = counterNextNumber(key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -970,8 +938,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		Long counterBefore = counterNextNumber(key);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(lead.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -998,8 +965,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		Long counterBefore = counterNextNumber(key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1038,8 +1004,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		Long counterBefore = counterNextNumber(key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1083,8 +1048,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		// Effective update: title changes to "Stable updated" while description and
 		// assignee stay unchanged. The hostile derived properties must be ignored.
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1167,8 +1131,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1197,8 +1160,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1228,8 +1190,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1260,8 +1221,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1294,8 +1254,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1332,8 +1291,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1361,8 +1319,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1389,8 +1346,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1417,8 +1373,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1445,8 +1400,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1474,8 +1428,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1502,8 +1455,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1530,8 +1482,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -1557,8 +1508,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(outsider.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -1587,8 +1537,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// issue/activity state and the project counter.
 		LifecycleSnapshot before = lifecycleSnapshot("LIFE31-999", key);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", "LIFE31-999")
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}", "LIFE31-999").cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1606,16 +1555,13 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 	@Test
 	void anonymousPatchReturns401() throws Exception {
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
 		Cookie anonSession = csrf.getResponse().getCookie("SESSION");
 
-		mockMvc.perform(patch("/api/issues/LIFE32-1")
-				.cookie(anonSession)
+		mockMvc.perform(patch("/api/issues/LIFE32-1").cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_JSON)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText())
+				.header("X-XSRF-TOKEN", csrfBody.getValue())
 				.content("""
 						{"title":"Hacked","description":"desc","assigneeId":null,"expectedVersion":0}
 						"""))
@@ -1636,8 +1582,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"title":"Hacked","description":"desc","assigneeId":null,"expectedVersion":0}
@@ -1667,8 +1612,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		Long counterBefore = counterNextNumber(key);
 		Map<String, Object> before = issueSnapshot(issueKey);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -1724,8 +1668,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		Long counterBefore = counterNextNumber(key);
 
-		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(lead.session())
+		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -1752,8 +1695,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		Long counterBefore = counterNextNumber(key);
 		Map<String, Object> before = issueSnapshot(issueKey);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1805,8 +1747,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-archact-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1850,8 +1791,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1880,8 +1820,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -1907,8 +1846,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(outsider.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -1937,8 +1875,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// issue/activity state and the project counter.
 		LifecycleSnapshot before = lifecycleSnapshot("LIFE41-999", key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", "LIFE41-999")
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", "LIFE41-999").cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -1956,16 +1893,13 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 	@Test
 	void anonymousArchiveReturns401() throws Exception {
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
 		Cookie anonSession = csrf.getResponse().getCookie("SESSION");
 
-		mockMvc.perform(post("/api/issues/LIFE42-1/archive")
-				.cookie(anonSession)
+		mockMvc.perform(post("/api/issues/LIFE42-1/archive").cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_JSON)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText())
+				.header("X-XSRF-TOKEN", csrfBody.getValue())
 				.content("""
 						{"expectedVersion":0}
 						"""))
@@ -1986,8 +1920,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2014,8 +1947,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2042,8 +1974,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"expectedVersion":0}
@@ -2068,8 +1999,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		// Archive once successfully.
-		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2081,8 +2011,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
 		// PATCH on archived issue -> 409 ISSUE_ARCHIVED.
-		MvcResult patchResult = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		MvcResult patchResult = mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2097,8 +2026,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		assertNoInternalDetail(patchResult);
 
 		// Re-archive -> 409 ISSUE_ARCHIVED.
-		MvcResult rearchResult = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		MvcResult rearchResult = mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2132,8 +2060,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		// Effective update: title and assignee change, description stays "desc".
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2143,8 +2070,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isOk());
 
 		// Archive.
-		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2153,8 +2079,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 				.andExpect(status().isOk());
 
 		// Activity endpoint returns CREATED, UPDATED, ARCHIVED in deterministic order.
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey)
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andReturn();
@@ -2210,8 +2135,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "LIFE48", "Activity DTO");
 		String issueKey = createIssue(admin, key, "TASK", "DTO", "desc", null);
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 
@@ -2252,8 +2176,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		// Effective update: title and assignee change, description stays "desc".
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2262,8 +2185,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 						""".formatted(assignee.userId())))
 				.andExpect(status().isOk());
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey)
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 
@@ -2311,8 +2233,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Hostile PATCH with extra fields and internal-looking keys. Only the title
 		// actually changes (description stays "desc", assignee stays null), so the
 		// UPDATED summary must record changedFields = ["title"].
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2322,8 +2243,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 						""".formatted(hostileActorId)))
 				.andExpect(status().isOk());
 
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey)
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 
@@ -2406,8 +2326,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-chgtitle-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2431,8 +2350,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-chgdesc-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2459,8 +2377,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-chgassign-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2487,8 +2404,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("lifecycle-chgclear-member@example.com", UserRole.USER);
 		addMember(key, member.userId(), "MEMBER");
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2515,8 +2431,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		LifecycleSnapshot before = lifecycleSnapshot(issueKey, key);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2538,8 +2453,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		// A nonmember cannot read activity; the issue is hidden.
 		LoginSession outsider = login("lifecycle-act404-outsider@example.com", UserRole.USER);
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey)
-				.cookie(outsider.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", issueKey).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -2558,8 +2472,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		// An unknown issue key is not found even for a project member.
-		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", "LIFE57-999")
-				.cookie(member.session()))
+		MvcResult result = mockMvc.perform(get("/api/issues/{issueKey}/activity", "LIFE57-999").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("ISSUE_NOT_FOUND"))
@@ -2592,8 +2505,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "STORY", "Move me", "desc", null);
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2622,8 +2534,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, lead.userId(), "PROJECT_LEAD");
 
 		long version = issueVersion(issueKey);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(lead.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(lead.session(), lead.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(lead.csrfHeader(), lead.csrfToken())
 				.content("""
@@ -2646,8 +2557,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		long version = issueVersion(issueKey);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2674,8 +2584,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Snapshot every destination issue before the move.
 		Map<String, IssueState> destBefore = statusState(key, "IN_PROGRESS");
 		long version = issueVersion(moving);
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", moving)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", moving).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2714,8 +2623,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Snapshot every destination issue before the move.
 		Map<String, IssueState> destBefore = statusState(key, "IN_PROGRESS");
 		long version = issueVersion(moving);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", moving)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", moving).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2749,8 +2657,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Snapshot every destination issue before the move.
 		Map<String, IssueState> destBefore = statusState(key, "IN_PROGRESS");
 		long version = issueVersion(moving);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", moving)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", moving).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2781,8 +2688,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// All three are in TO_DO with ranks 1024, 2048, 3072. Move C before A.
 		Map<String, IssueState> before = statusState(key, "TO_DO");
 		long version = issueVersion(c);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", c)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", c).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2812,8 +2718,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Move A after B.
 		Map<String, IssueState> before = statusState(key, "TO_DO");
 		long version = issueVersion(a);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", a)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", a).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2843,8 +2748,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Move A to the end of TO_DO.
 		Map<String, IssueState> before = statusState(key, "TO_DO");
 		long version = issueVersion(a);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", a)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", a).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2870,8 +2774,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String issueKey = createIssue(admin, key, "STORY", "Safe move", "desc", null);
 
 		long version = issueVersion(issueKey);
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2894,8 +2797,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		Map<String, Object> before = issueSnapshot(issueKey);
 		long version = issueVersion(issueKey);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -2933,8 +2835,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		addMember(key, member.userId(), "MEMBER");
 
 		long version = issueVersion(issueKey);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -2987,8 +2888,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		// Snapshot every destination issue before the move.
 		Map<String, IssueState> destBefore = statusState(key, "IN_PROGRESS");
 		long version = issueVersion(d);
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", d)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", d).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3032,8 +2932,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		Map<String, Object> before = issueSnapshot(issueKey);
 		long version = issueVersion(issueKey);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3064,8 +2963,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(b, key, "TO_DO", "TO_DO");
 		long version = issueVersion(b);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3093,8 +2991,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(b, key, "TO_DO", "TO_DO");
 		long version = issueVersion(b);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3125,8 +3022,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(b, key, "TO_DO", "TO_DO");
 		long version = issueVersion(b);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", b).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3157,8 +3053,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(b, key, "TO_DO", "TO_DO");
 		long version = issueVersion(b);
 
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", b)
-				.cookie(admin.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", b).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3181,8 +3076,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "UNKNOWN");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3216,8 +3110,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "IN_PROGRESS");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3245,8 +3138,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(moving, key, "TO_DO", "TO_DO");
 		long version = issueVersion(moving);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", moving)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", moving).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3272,8 +3164,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3299,8 +3190,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3325,8 +3215,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3351,8 +3240,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3377,8 +3265,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3403,8 +3290,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3428,8 +3314,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3453,8 +3338,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3479,8 +3363,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3506,8 +3389,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3539,8 +3421,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LifecycleSnapshot neighborBefore = lifecycleSnapshot(otherIssue, otherKey);
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3573,8 +3454,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LifecycleSnapshot neighborBefore = lifecycleSnapshot(neighbor, key);
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3609,8 +3489,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LifecycleSnapshot neighborBefore = lifecycleSnapshot(neighbor, key);
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3637,8 +3516,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3666,8 +3544,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(admin.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content("""
@@ -3698,8 +3575,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(viewer.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(viewer.session(), viewer.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(viewer.csrfHeader(), viewer.csrfToken())
 				.content("""
@@ -3727,8 +3603,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 		long version = issueVersion(issueKey);
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(outsider.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(outsider.session(), outsider.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(outsider.csrfHeader(), outsider.csrfToken())
 				.content("""
@@ -3756,8 +3631,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		MoveSnapshot before = moveSnapshot("MOVE34-999", key, "TO_DO", "TO_DO");
 
-		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", "MOVE34-999")
-				.cookie(member.session())
+		MvcResult result = mockMvc.perform(patch("/api/issues/{issueKey}/move", "MOVE34-999").cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(member.csrfHeader(), member.csrfToken())
 				.content("""
@@ -3776,16 +3650,13 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 	@Test
 	void anonymousMoveReturnsUnauthenticated() throws Exception {
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
 		Cookie anonSession = csrf.getResponse().getCookie("SESSION");
 
-		mockMvc.perform(patch("/api/issues/MOVE35-1/move")
-				.cookie(anonSession)
+		mockMvc.perform(patch("/api/issues/MOVE35-1/move").cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_JSON)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText())
+				.header("X-XSRF-TOKEN", csrfBody.getValue())
 				.content("""
 						{"targetStatusCode":"IN_PROGRESS","beforeIssueKey":null,
 						 "afterIssueKey":null,"expectedVersion":0}
@@ -3807,8 +3678,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		MoveSnapshot before = moveSnapshot(issueKey, key, "TO_DO", "TO_DO");
 
-		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(member.session())
+		mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(member.session(), member.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 						{"targetStatusCode":"IN_PROGRESS","beforeIssueKey":null,
@@ -3857,7 +3727,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 
 		// A nonmember of the project cannot list; the project is hidden.
 		LoginSession outsider = login("list-privacy-outsider@example.com", UserRole.USER);
-		mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(outsider.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(outsider.session(), outsider.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"))
@@ -3867,7 +3737,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession member = login("list-privacy-member@example.com", UserRole.USER);
 		String otherKey = createProject(admin, "LIST03", "Other");
 		addMember(otherKey, member.userId(), "MEMBER");
-		mockMvc.perform(get("/api/projects/{key}/issues", "UNKNOWN").cookie(member.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues", "UNKNOWN").cookie(member.session(), member.csrfCookie()))
 				.andExpect(status().isNotFound())
 				.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 				.andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"))
@@ -3888,8 +3758,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		LoginSession admin = login("list-empty-admin@example.com", UserRole.ORG_ADMIN);
 		String key = createProject(admin, "LIST04", "Empty");
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")))
@@ -3912,8 +3781,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		jdbcTemplate.update("UPDATE issue SET archived = TRUE, version = version + 1"
 				+ " WHERE human_key = ?", archived);
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -3929,8 +3797,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "LIST06", "Safe");
 		createIssue(admin, key, "STORY", "Safe issue", null, null);
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -3952,8 +3819,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String two = createIssue(admin, key, "TASK", "Two", null, null);
 		String three = createIssue(admin, key, "BUG", "Three", null, null);
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -3971,9 +3837,9 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "LIST08", "Page range");
 		createIssue(admin, key, "STORY", "Only", null, null);
 
-		mockMvc.perform(get("/api/projects/{key}/issues?page=0", key).cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?page=0", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/projects/{key}/issues?page=10000", key).cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?page=10000", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk());
 	}
 
@@ -3984,8 +3850,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		createIssue(admin, key, "STORY", "Only", null, null);
 
 		for (String page : List.of("-1", "10001")) {
-			mockMvc.perform(get("/api/projects/{key}/issues?page=" + page, key)
-					.cookie(admin.session()))
+			mockMvc.perform(get("/api/projects/{key}/issues?page=" + page, key).cookie(admin.session(), admin.csrfCookie()))
 					.andExpect(status().isBadRequest())
 					.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 					.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -4001,9 +3866,9 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		createIssue(admin, key, "STORY", "A", null, null);
 		createIssue(admin, key, "TASK", "B", null, null);
 
-		mockMvc.perform(get("/api/projects/{key}/issues?size=1", key).cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?size=1", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk());
-		mockMvc.perform(get("/api/projects/{key}/issues?size=100", key).cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?size=100", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk());
 	}
 
@@ -4014,8 +3879,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		createIssue(admin, key, "STORY", "Only", null, null);
 
 		for (String size : List.of("0", "101")) {
-			mockMvc.perform(get("/api/projects/{key}/issues?size=" + size, key)
-					.cookie(admin.session()))
+			mockMvc.perform(get("/api/projects/{key}/issues?size=" + size, key).cookie(admin.session(), admin.csrfCookie()))
 					.andExpect(status().isBadRequest())
 					.andExpect(content().contentTypeCompatibleWith(PROBLEM_JSON))
 					.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
@@ -4069,28 +3933,23 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		createIssue(admin, key, "STORY", "Only", null, null);
 
 		// Unknown field.
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=rank,asc", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=rank,asc", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 		// Unknown direction.
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,up", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,up", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 		// Single segment (missing direction).
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=number", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=number", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 		// Extra segment.
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,asc,extra", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,asc,extra", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 		// Repeated sort parameter.
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,asc&sort=title,desc", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,asc&sort=title,desc", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 	}
@@ -4101,12 +3960,10 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		String key = createProject(admin, "LIST15", "Minus sort");
 		createIssue(admin, key, "STORY", "Only", null, null);
 
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=-number,asc", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=-number,asc", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
-		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,-asc", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?sort=number,-asc", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
 	}
@@ -4135,8 +3992,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		}
 
 		// 25 active items at size 10 -> 3 pages (10, 10, 5); page 1 has 10 items.
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues?page=1&size=10", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues?page=1&size=10", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -4154,8 +4010,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		createIssue(admin, keyA, "TASK", "A2", null, null);
 		String b1 = createIssue(admin, keyB, "BUG", "B1", null, null);
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", keyB)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", keyB).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -4173,15 +4028,13 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		payload.put("title", "Hostile \"title\"");
 		payload.put("description", "{\"secret\":\"leak\"}");
 		payload.put("assigneeId", null);
-		mockMvc.perform(post("/api/projects/{key}/issues", key)
-				.cookie(admin.session())
+		mockMvc.perform(post("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(admin.csrfHeader(), admin.csrfToken())
 				.content(objectMapper.writeValueAsString(payload)))
 				.andExpect(status().isCreated());
 
-		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key)
-				.cookie(admin.session()))
+		MvcResult result = mockMvc.perform(get("/api/projects/{key}/issues", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		String raw = result.getResponse().getContentAsString();
@@ -4211,8 +4064,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 		List<Map<String, Object>> activitiesBefore = activityRows(key);
 		Long counterBefore = counterNextNumber(key);
 
-		mockMvc.perform(get("/api/projects/{key}/issues?page=0&size=20&sort=number,asc", key)
-				.cookie(admin.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues?page=0&size=20&sort=number,asc", key).cookie(admin.session(), admin.csrfCookie()))
 				.andExpect(status().isOk());
 
 		assertThat(issueSnapshot(a)).isEqualTo(aBefore);
@@ -4393,7 +4245,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 	 * readable role may list.
 	 */
 	private void listAndExpectOk(LoginSession session, String projectKey) throws Exception {
-		mockMvc.perform(get("/api/projects/{key}/issues", projectKey).cookie(session.session()))
+		mockMvc.perform(get("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie()))
 				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(header().string("Cache-Control", containsString("no-store")));
@@ -4406,8 +4258,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 	private void assertListOrder(String projectKey, LoginSession session, String sort,
 			List<String> expectedKeys) throws Exception {
 		MvcResult result = mockMvc.perform(
-				get("/api/projects/" + projectKey + "/issues?sort=" + sort)
-						.cookie(session.session()))
+				get("/api/projects/" + projectKey + "/issues?sort=" + sort).cookie(session.session(), session.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -4425,8 +4276,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 	private void assertPageKeys(String projectKey, LoginSession session, int page, int size,
 			List<String> expectedKeys) throws Exception {
 		MvcResult result = mockMvc.perform(
-				get("/api/projects/" + projectKey + "/issues?page=" + page + "&size=" + size)
-						.cookie(session.session()))
+				get("/api/projects/" + projectKey + "/issues?page=" + page + "&size=" + size).cookie(session.session(), session.csrfCookie()))
 				.andExpect(status().isOk())
 				.andReturn();
 		JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -4652,8 +4502,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 	}
 
 	private String createProject(LoginSession session, String key, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -4673,8 +4522,7 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 			String description, UUID assigneeId) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -4706,36 +4554,27 @@ class IssueApiIT extends PostgresIntegrationTestSupport {
 				role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(
-				account.getId(),
-				postLoginSession,
-				csrfAfterBody.get("headerName").asText(),
-				csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader, String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 
 	/**
 		* A complete pre-request lifecycle snapshot used to prove a rejected or no-op

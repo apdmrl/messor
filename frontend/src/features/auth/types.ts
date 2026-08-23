@@ -8,12 +8,6 @@ export interface UserSummary {
   role: UserRole
 }
 
-export interface CsrfTokenResponse {
-  headerName: string
-  parameterName: string
-  token: string
-}
-
 export interface ProblemDetails {
   type: string
   title: string

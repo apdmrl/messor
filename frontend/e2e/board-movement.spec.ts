@@ -104,16 +104,8 @@ async function mockWorkspace(
 ): Promise<void> {
   let moved = false
 
-  await page.route('**/api/auth/csrf', (route) => {
-    route.fulfill({
-      status: 200,
-      contentType: JSON_JSON,
-      body: JSON.stringify({
-        headerName: 'X-Test-Csrf',
-        parameterName: '_csrf',
-        token: 'masked-board-token',
-      }),
-    })
+  await page.addInitScript(() => {
+    document.cookie = 'XSRF-TOKEN=masked-board-token; path=/'
   })
   await page.route('**/api/projects/MES', (route) => {
     route.fulfill({ status: 200, contentType: JSON_JSON, body: JSON.stringify(project(role)) })

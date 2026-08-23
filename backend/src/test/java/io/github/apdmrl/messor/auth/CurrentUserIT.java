@@ -125,16 +125,26 @@ class CurrentUserIT extends PostgresIntegrationTestSupport {
 		assertThat(body.has("trace")).isFalse();
 
 		String raw = decodeUtf8(response);
-		assertThat(raw).doesNotContain(sessionId, csrfToken);
+		assertThat(raw).doesNotContain(csrfToken);
+		if (!sessionId.isEmpty()) {
+			assertThat(raw).doesNotContain(sessionId);
+		}
 		assertThat(raw).doesNotContain("\uFFFD");
 	}
 
 	private String fetchCsrfToken() throws Exception {
-		HttpResponse<byte[]> response = get("/api/auth/csrf");
+				// Bootstrap a request that flows through the CSRF filter, which issues
+		// the XSRF-TOKEN cookie that the SPA echoes in the X-XSRF-TOKEN header.
+		get("/api/private-probe");
+		return csrfCookieValue();
+		}
 
-		assertThat(response.statusCode()).isEqualTo(200);
-		JsonNode body = objectMapper.readTree(decodeUtf8(response));
-		return body.get("token").asText();
+	private String csrfCookieValue() {
+		return cookieManager.getCookieStore().getCookies().stream()
+				.filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+				.map(HttpCookie::getValue)
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("XSRF-TOKEN cookie not issued"));
 	}
 
 	private HttpResponse<byte[]> postLogin(String email, String password, String csrfToken)
@@ -144,7 +154,7 @@ class CurrentUserIT extends PostgresIntegrationTestSupport {
 
 		HttpRequest request = HttpRequest.newBuilder(uri("/api/auth/login"))
 				.header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-				.header("X-CSRF-TOKEN", csrfToken)
+				.header("X-XSRF-TOKEN", csrfToken)
 				.POST(HttpRequest.BodyPublishers.ofString(form))
 				.build();
 

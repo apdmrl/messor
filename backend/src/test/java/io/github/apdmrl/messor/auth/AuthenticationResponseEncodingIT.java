@@ -3,6 +3,7 @@ package io.github.apdmrl.messor.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.CookieManager;
+import java.net.HttpCookie;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -91,13 +92,19 @@ class AuthenticationResponseEncodingIT extends PostgresIntegrationTestSupport {
 	}
 
 	private String fetchCsrfToken() throws Exception {
-		HttpRequest request = HttpRequest.newBuilder(uri("/api/auth/csrf")).GET().build();
-		HttpResponse<String> response = http.send(
-				request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+				// Bootstrap a request that flows through the CSRF filter, which issues
+		// the XSRF-TOKEN cookie that the client echoes in the X-XSRF-TOKEN header.
+		HttpRequest request = HttpRequest.newBuilder(uri("/api/private-probe")).GET().build();
+		http.send(request, HttpResponse.BodyHandlers.discarding());
+		return csrfCookieValue();
+		}
 
-		assertThat(response.statusCode()).isEqualTo(200);
-		JsonNode body = objectMapper.readTree(response.body());
-		return body.get("token").asText();
+	private String csrfCookieValue() {
+		return cookieManager.getCookieStore().getCookies().stream()
+				.filter(cookie -> "XSRF-TOKEN".equals(cookie.getName()))
+				.map(HttpCookie::getValue)
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("XSRF-TOKEN cookie not issued"));
 	}
 
 	private HttpResponse<byte[]> postLogin(String email, String password, String csrfToken)
@@ -107,7 +114,7 @@ class AuthenticationResponseEncodingIT extends PostgresIntegrationTestSupport {
 
 		HttpRequest request = HttpRequest.newBuilder(uri("/api/auth/login"))
 				.header("Content-Type", MediaType.APPLICATION_FORM_URLENCODED_VALUE)
-				.header("X-CSRF-TOKEN", csrfToken)
+								.header("X-XSRF-TOKEN", csrfToken)
 				.POST(HttpRequest.BodyPublishers.ofString(form))
 				.build();
 

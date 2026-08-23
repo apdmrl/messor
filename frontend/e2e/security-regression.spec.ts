@@ -8,6 +8,7 @@ import {
   apiFetch,
   apiLogin,
   apiLogout,
+  csrfProof,
   collectUnexpectedErrors,
   demoPassword,
   expectCleanBrowserStorage,
@@ -108,8 +109,7 @@ test('mutations require a valid session-scoped CSRF token', async ({
   const projectKey = uniqueProjectKey('CS')
 
   await apiLogin(page, ADMIN_EMAIL, PASSWORD)
-  const sessionTokenBody = await apiFetch(page, '/api/auth/csrf')
-  const sessionToken = sessionTokenBody.body as { headerName: string; token: string }
+  const sessionToken = await csrfProof(page)
 
   // 1. Missing token on a state-changing request -> 403.
   const missing = await apiFetch(page, '/api/projects', {

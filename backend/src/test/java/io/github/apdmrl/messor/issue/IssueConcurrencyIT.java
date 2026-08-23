@@ -937,8 +937,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 
 	private CreateResult performCreate(String projectKey, LoginSession session, String title)
 			throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1226,8 +1225,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 			String description, UUID assigneeId, long expectedVersion) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		return mockMvc.perform(patch("/api/issues/{issueKey}", issueKey)
-				.cookie(session.session())
+		return mockMvc.perform(patch("/api/issues/{issueKey}", issueKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1238,8 +1236,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 
 	private MvcResult performArchive(String issueKey, LoginSession session, long expectedVersion)
 			throws Exception {
-		return mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey)
-				.cookie(session.session())
+		return mockMvc.perform(post("/api/issues/{issueKey}/archive", issueKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1256,8 +1253,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 			String beforeIssueKey, String afterIssueKey, long expectedVersion) throws Exception {
 		String beforeJson = beforeIssueKey == null ? "null" : "\"" + beforeIssueKey + "\"";
 		String afterJson = afterIssueKey == null ? "null" : "\"" + afterIssueKey + "\"";
-		return mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey)
-				.cookie(session.session())
+		return mockMvc.perform(patch("/api/issues/{issueKey}/move", issueKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1312,8 +1308,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 			String description, UUID assigneeId) throws Exception {
 		String descJson = description == null ? "null" : "\"" + description + "\"";
 		String assigneeJson = assigneeId == null ? "null" : "\"" + assigneeId + "\"";
-		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey)
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects/{key}/issues", projectKey).cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1380,8 +1375,7 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 	}
 
 	private String createProject(LoginSession session, String key, String name) throws Exception {
-		MvcResult result = mockMvc.perform(post("/api/projects")
-				.cookie(session.session())
+		MvcResult result = mockMvc.perform(post("/api/projects").cookie(session.session(), session.csrfCookie())
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(session.csrfHeader(), session.csrfToken())
 				.content("""
@@ -1403,36 +1397,27 @@ class IssueConcurrencyIT extends PostgresIntegrationTestSupport {
 				role);
 		userAccountRepository.saveAndFlush(account);
 
-		MvcResult csrf = mockMvc.perform(get("/api/auth/csrf"))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfBody = objectMapper.readTree(csrf.getResponse().getContentAsString());
-		Cookie preLoginSession = csrf.getResponse().getCookie("SESSION");
+		MvcResult csrf = mockMvc.perform(get("/api/private-probe")).andReturn();
+		Cookie csrfBody = csrf.getResponse().getCookie("XSRF-TOKEN");
+
 
 		MvcResult login = mockMvc.perform(post("/api/auth/login")
-				.cookie(preLoginSession)
+				.cookie(csrfBody)
 				.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 				.param("email", email)
 				.param("password", password)
-				.header(csrfBody.get("headerName").asText(), csrfBody.get("token").asText()))
+				.header("X-XSRF-TOKEN", csrfBody.getValue()))
 				.andExpect(status().isOk())
 				.andReturn();
 
 		Cookie postLoginSession = login.getResponse().getCookie("SESSION");
-		MvcResult csrfAfter = mockMvc.perform(get("/api/auth/csrf").cookie(postLoginSession))
-				.andExpect(status().isOk())
-				.andReturn();
-		JsonNode csrfAfterBody = objectMapper.readTree(csrfAfter.getResponse().getContentAsString());
+		MvcResult csrfAfter = mockMvc.perform(get("/api/private-probe").cookie(postLoginSession)).andReturn();
+		Cookie csrfAfterBody = csrfAfter.getResponse().getCookie("XSRF-TOKEN");
 
-		return new LoginSession(
-				account.getId(),
-				postLoginSession,
-				csrfAfterBody.get("headerName").asText(),
-				csrfAfterBody.get("token").asText());
+		return new LoginSession(account.getId(), postLoginSession, csrfAfterBody, "X-XSRF-TOKEN", csrfAfterBody.getValue());
 	}
 
-	private record LoginSession(UUID userId, Cookie session, String csrfHeader, String csrfToken) {
-	}
+	private record LoginSession(UUID userId, Cookie session, Cookie csrfCookie, String csrfHeader, String csrfToken) {}
 
 	private record CreateResult(int status, String title, String issueKey, Long number, Long rank) {
 	}
