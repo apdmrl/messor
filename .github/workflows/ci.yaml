@@ -1,0 +1,173 @@
+name: ci
+
+on:
+  push:
+    branches: [main, feature/mvp-plan]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# CI-only dummy credentials. They are throwaway test values injected through
+# the environment (never read from any .env, never echoed to logs) and are only
+# used to satisfy the compose `:?` required-variable checks and the demo
+# profile seed. The real local demo password stays only in the developer's
+# untracked .env file.
+env:
+  MESSOR_CI_DB_PASSWORD: ci-only-dummy-db-password
+  MESSOR_CI_DEMO_PASSWORD: ci-only-dummy-demo-password
+
+jobs:
+  verify:
+    name: Backend + frontend + compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 25 (Temurin, cached)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Set up Node 22 (cached)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Backend full verify (unit + PostgreSQL Testcontainers)
+        working-directory: backend
+        run: ./mvnw verify
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Create ephemeral .env for compose validation
+        run: |
+          cat > .env <<EOF
+          MESSOR_DB_NAME=messor
+          MESSOR_DB_USER=messor
+          MESSOR_DB_PASSWORD=${MESSOR_CI_DB_PASSWORD}
+          MESSOR_DB_PORT=5432
+          MESSOR_DEV_PORT=8088
+          MESSOR_TEST_PORT=8089
+          MESSOR_PUBLIC_PORT=80
+          MESSOR_DEMO_PASSWORD=${MESSOR_CI_DEMO_PASSWORD}
+          MESSOR_SPRING_PROFILES_ACTIVE=prod
+          EOF
+
+      - name: Validate compose configurations
+        run: |
+          docker compose --env-file .env -f compose.dev.yaml config >/dev/null
+          docker compose --env-file .env -f compose.test.yaml config >/dev/null
+          docker compose --env-file .env -f compose.yaml config >/dev/null
+
+      - name: Verify the dev-compose contract
+        run: sh scripts/verify-dev-compose.sh
+
+      - name: Verify no whitespace errors in the tree
+        run: git diff --check
+
+  acceptance:
+    name: Compose-backed Playwright acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: verify
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22 (cached)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium with system dependencies
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Create ephemeral .env for the test stack
+        run: |
+          cat > .env <<EOF
+          MESSOR_DB_NAME=messor
+          MESSOR_DB_USER=messor
+          MESSOR_DB_PASSWORD=${MESSOR_CI_DB_PASSWORD}
+          MESSOR_DB_PORT=5432
+          MESSOR_DEV_PORT=8088
+          MESSOR_TEST_PORT=8089
+          MESSOR_PUBLIC_PORT=80
+          MESSOR_DEMO_PASSWORD=${MESSOR_CI_DEMO_PASSWORD}
+          MESSOR_SPRING_PROFILES_ACTIVE=prod
+          EOF
+
+      - name: Start the test stack
+        run: docker compose --env-file .env -f compose.test.yaml up -d --build
+
+      - name: Wait for the test stack to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8089/actuator/health >/dev/null 2>&1 \
+               && curl -fsS -o /dev/null http://127.0.0.1:8089/; then
+              echo "test stack is healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose --env-file .env -f compose.test.yaml ps
+          echo "test stack did not become healthy in time"
+          exit 1
+
+      - name: Run the compose-backed acceptance suite (real backend/session/CSRF)
+        working-directory: frontend
+        run: npx playwright test -c playwright.stack.config.ts
+        env:
+          MESSOR_DEMO_PASSWORD: ${{ env.MESSOR_CI_DEMO_PASSWORD }}
+          PLAYWRIGHT_STACK_URL: http://127.0.0.1:8089
+
+      - name: Run the mocked Playwright suite
+        working-directory: frontend
+        run: npx playwright test
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          if-no-files-found: ignore
+
+      - name: Shut down the test stack
+        if: always()
+        run: docker compose --env-file .env -f compose.test.yaml down --remove-orphans

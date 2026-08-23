@@ -1,32 +1,26 @@
-# React + TypeScript + Vite
+# Messor frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This directory contains the Messor React + TypeScript single-page application
+(React 19, Vite, TanStack Query, React Router, dnd-kit).
 
-Currently, two official plugins are available:
+See the repository [README](../README.md) for:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- the product and completed MVP features,
+- the technology stack and architecture,
+- how to start the full local demo with Docker Compose,
+- demo accounts and setup,
+- how to run the frontend tests, lint, build, and browser suites.
 
-## React Compiler
+Quick local commands:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci
+npm test          # unit/component tests
+npm run lint      # oxlint
+npm run build     # type-check + production build
+npm run test:e2e  # mocked Playwright suite (no backend required)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The real-stack acceptance suites (`frontend/e2e/mvp-golden-path.spec.ts` and
+`frontend/e2e/security-regression.spec.ts`) run against the compose-backed stack
+via `npm run test:e2e:stack` (see `playwright.stack.config.ts` and the README).

@@ -224,29 +224,67 @@ function cardOrder(): Promise<string[]> {
   })
 }
 
+/** The issue key of a drag handle whose aria-label is `${issueKey} sürükle`. */
+async function dragId(handle: import('@playwright/test').Locator): Promise<string> {
+  const label = await handle.getAttribute('aria-label')
+  const id = label?.replace(/\s+sürükle$/, '')
+  expect(id, 'drag handle must carry a "… sürükle" aria-label').toBeTruthy()
+  return id ?? ''
+}
+
+/**
+ * Pick up the focused drag handle with the KeyboardSensor. Instead of a blind
+ * sleep, wait for the sensor's settled drag-over announcement naming the active
+ * card over itself ("Kart MES-1 üzerinde: MES-1."). This is the deterministic
+ * pre-move state, so the first ArrowDown is never swallowed during sensor
+ * initialization, regardless of machine load.
+ */
+async function keyboardPickUp(
+  page: Page,
+  handle: import('@playwright/test').Locator,
+): Promise<void> {
+  await handle.focus()
+  await page.keyboard.down('Space')
+  await page.keyboard.up('Space')
+  const id = await dragId(handle)
+  await expect(dndLiveRegion(page)).toContainText(
+    `Kart ${id} üzerinde: ${id}`,
+    { timeout: 5000 },
+  )
+}
+
+/** Drop an active keyboard drag and wait for the resolved end announcement. */
+async function keyboardDrop(page: Page): Promise<void> {
+  await page.keyboard.down('Space')
+  await page.keyboard.up('Space')
+  await expect(dndLiveRegion(page)).toContainText(/taşındı|değişmedi|iptal/, {
+    timeout: 5000,
+  })
+}
+
 /**
  * Genuine KeyboardSensor drag: pick up the focused handle with Space, move with
- * arrow keys, drop with Space. Small waits make the sensor's key sequencing
- * deterministic across runs.
+ * arrow keys, drop with Space. Every step waits on the sensor's live-region
+ * announcements rather than a blind sleep. The drop is only issued once the
+ * announcement proves the active card is over the expected destination, so a
+ * slow event loop can neither swallow a keypress nor drop on the source card.
  */
 async function keyboardDrag(
   page: Page,
   handle: import('@playwright/test').Locator,
   keys: string[],
+  expectedOverId: string,
 ): Promise<void> {
-  await handle.focus()
-  await page.waitForTimeout(80)
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
-  await page.waitForTimeout(80)
+  await keyboardPickUp(page, handle)
+  const id = await dragId(handle)
   for (const key of keys) {
     await page.keyboard.press(key)
-    await page.waitForTimeout(80)
   }
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
+  await expect(dndLiveRegion(page)).toContainText(
+    `Kart ${id} üzerinde: ${expectedOverId}`,
+    { timeout: 5000 },
+  )
+  await keyboardDrop(page)
 }
 
 /**
@@ -352,16 +390,9 @@ test('keyboard self-drop issues zero moves and announces the card position did n
 
   const live = dndLiveRegion(page)
   const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
-  await handle.focus()
-  await page.waitForTimeout(80)
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
-  await page.waitForTimeout(80)
+  await keyboardPickUp(page, handle)
   // Pick up and drop without moving: a genuine self-drop.
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
+  await keyboardDrop(page)
 
   await expect.poll(() => capture.count).toBe(0)
   await expect(live).toContainText('Kartın konumu değişmedi.')
@@ -397,16 +428,10 @@ test('valid drop announces success only after the real move is accepted', async 
 
   const live = dndLiveRegion(page)
   const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
-  await handle.focus()
-  await page.waitForTimeout(80)
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
-  await page.waitForTimeout(80)
+  await keyboardPickUp(page, handle)
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
+  await expect(live).toContainText('Kart MES-1 üzerinde: MES-2', { timeout: 5000 })
+  await keyboardDrop(page)
 
   await expect.poll(() => capture.count, { timeout: 5000 }).toBe(1)
   await expect(live).toContainText('yeni konumuna taşındı')
@@ -491,6 +516,7 @@ test('keyboard handle pickup/move/drop through KeyboardSensor', async ({ page },
     page,
     page.getByRole('button', { name: 'MES-1 sürükle' }),
     ['ArrowDown'],
+    'MES-2',
   )
 
   await expect.poll(() => capture.count, { timeout: 5000 }).toBe(1)
@@ -511,16 +537,15 @@ test('Escape during an active keyboard drag cancels with zero move requests', as
   await gotoBoard(page)
 
   const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
-  await handle.focus()
-  await page.waitForTimeout(80)
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
-  await page.waitForTimeout(80)
+  await keyboardPickUp(page, handle)
   await page.keyboard.press('ArrowDown')
+  await expect(dndLiveRegion(page)).toContainText('Kart MES-1 üzerinde: MES-2', {
+    timeout: 5000,
+  })
   await page.keyboard.press('Escape') // cancel
 
   await expect.poll(() => capture.count).toBe(0)
+  await expect(dndLiveRegion(page)).toContainText('iptal', { timeout: 5000 })
   await expectOrder(page, ['MES-1', 'MES-2', 'MES-3'])
 })
 
@@ -533,20 +558,14 @@ test('screen reader announcements are controlled Turkish text during a keyboard 
 
   const live = dndLiveRegion(page)
   const handle = page.getByRole('button', { name: 'MES-1 sürükle' })
-  await handle.focus()
-  await page.waitForTimeout(80)
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
-  await page.waitForTimeout(80)
+  await keyboardPickUp(page, handle)
   await page.keyboard.press('ArrowDown')
+  await expect(live).toContainText('Kart MES-1 üzerinde: MES-2', { timeout: 5000 })
 
   // Controlled Turkish announcement text is announced; no raw/hostile content.
   await expect(live).toContainText('Kart MES-1')
   await expect(live).toContainText('üzerinde')
 
-  await page.keyboard.down('Space')
-  await page.waitForTimeout(80)
-  await page.keyboard.up('Space')
+  await keyboardDrop(page)
   await expect.poll(() => capture.count, { timeout: 5000 }).toBe(1)
 })

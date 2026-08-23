@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { QueryClient } from '@tanstack/react-query'
 import App from '../App'
 import { apiRequest } from './apiClient'
@@ -112,9 +112,16 @@ describe('session expiry regression', () => {
 
     renderAt('/projects')
 
-    // The application must eventually render the login screen.
+    // The application must eventually render the login screen. The full
+    // bootstrap -> authenticated -> protected-request -> expiry flow spans
+    // several async hops, so a bounded wait (not the 1s default) is needed when
+    // the whole suite congests the event loop.
     expect(
-      await screen.findByRole('heading', { name: 'Oturum aç', level: 2 }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Oturum aç', level: 2 },
+        { timeout: 5000 },
+      ),
     ).toBeInTheDocument()
 
     // Protected UI must disappear.
@@ -134,8 +141,11 @@ describe('session expiry regression', () => {
     // The shared QueryClient cache is cleared exactly twice: once when the
     // active authenticated bootstrap is accepted, and once when the
     // current-session expiry notification arrives. This proves the expiry
-    // clears protected cached server state in addition to redirecting.
-    expect(clearSpy).toHaveBeenCalledTimes(2)
+    // clears protected cached server state in addition to redirecting. The
+    // count is polled because the two clears happen across async boundaries.
+    await waitFor(() => expect(clearSpy).toHaveBeenCalledTimes(2), {
+      timeout: 5000,
+    })
   })
 
   it('does not clear the QueryClient again after the SessionProvider unmounts', async () => {

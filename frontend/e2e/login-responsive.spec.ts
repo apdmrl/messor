@@ -373,8 +373,13 @@ test('successful mocked login flow', async ({ page }) => {
   expect(capture.body!.get('password'), 'password must match').toBe(passwordValue)
   expect(capture.csrfHeader, 'CSRF header must be present').toBe('masked-test-token-1')
 
-  // Authenticated shell appears; login card disappears.
-  await expect(page.getByRole('heading', { name: 'Görev alanı' })).toBeVisible()
+  // Authenticated shell appears; login card disappears. A successful login
+  // must prove the protected route contract: the router redirects from /login
+  // to /projects, the authenticated shell (identity, role, logout) renders,
+  // and the login screen is gone.
+  await expect(page).toHaveURL(/\/projects$/)
+  await expect(page.getByRole('heading', { name: 'Projeler', level: 2 })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Görevlerim' })).toBeVisible()
   await expect(page.getByText('Ada Lovelace')).toBeVisible()
   await expect(page.getByText('member@demo.messor.app')).toBeVisible()
   await expect(page.getByText('Üye')).toBeVisible()
@@ -418,7 +423,10 @@ test('long authenticated email does not overflow at 320px', async ({ page }, tes
   await mockAuthenticatedMe(page, longEmailUser())
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Görev alanı' })).toBeVisible()
+  // An authenticated principal is redirected to the protected /projects shell;
+  // the long user email must render without breaking the 320px layout.
+  await expect(page).toHaveURL(/\/projects$/)
+  await expect(page.getByRole('heading', { name: 'Projeler', level: 2 })).toBeVisible()
 
   await expectNoHorizontalOverflow(page)
 

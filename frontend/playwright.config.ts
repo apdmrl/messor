@@ -12,6 +12,10 @@ import { defineConfig, devices } from '@playwright/test'
  */
 export default defineConfig({
   testDir: './e2e',
+  // The real-stack suites (golden path + security regressions) run against a
+  // running compose stack via playwright.stack.config.ts; they are excluded
+  // here so this mocked suite needs no backend or demo password.
+  testIgnore: ['**/mvp-golden-path.spec.ts', '**/security-regression.spec.ts'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

@@ -206,15 +206,26 @@ test('URL filter selects and back/forward restores state', async ({ page }) => {
   await expect(archive).toBeVisible()
   await expect(archive).toHaveValue('active')
 
-  // Select archived; the network request must carry archive=archived.
-  const requestPromise = page.waitForRequest((req) => req.url().includes('/api/my-work'))
+  // Select archived; the network request must carry archive=archived. The
+  // predicate is specific so it can never capture the initial (non-archived)
+  // request that the page load already issued.
+  const requestPromise = page.waitForRequest((req) => {
+    const url = new URL(req.url())
+    return (
+      url.pathname.includes('/api/my-work') &&
+      url.searchParams.get('archive') === 'archived'
+    )
+  })
   await archive.selectOption('archived')
   const request = await requestPromise
   expect(new URL(request.url()).searchParams.get('archive')).toBe('archived')
 
   await expect(page.getByText('My archived task')).toBeVisible()
   await expect(page.getByText('My active task')).toHaveCount(0)
-  expect(new URL(page.url()).searchParams.get('archive')).toBe('archived')
+  // The URL update and the canonicalization effect are asynchronous; poll.
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('archive'))
+    .toBe('archived')
 
   // Back restores the active default.
   await page.goBack()
