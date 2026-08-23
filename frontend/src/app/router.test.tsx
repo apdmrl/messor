@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { routes } from './router'
@@ -30,6 +31,13 @@ const projectDetail: ProjectDetail = {
   ],
 }
 
+const emptyProjectsPage: PageResponse<ProjectSummary> = {
+  items: [],
+  page: 0,
+  size: 100,
+  totalItems: 0,
+  totalPages: 0,
+}
 const emptyPage: IssuePage = {
   items: [],
   page: 0,
@@ -156,7 +164,7 @@ describe('router', () => {
       await screen.findByRole('heading', { name: 'Messor', level: 2 }),
     ).toBeInTheDocument()
     expect(screen.getByText('MES')).toBeInTheDocument()
-    expect(screen.getByText('İssue’lar')).toBeInTheDocument()
+    expect(screen.getByText('İşler')).toBeInTheDocument()
   })
 
   it('renders the issue drawer for a direct /projects/:projectKey/issues/:issueKey load', async () => {
@@ -225,5 +233,91 @@ describe('router', () => {
       await screen.findByRole('heading', { name: 'Görevlerim', level: 2 }),
     ).toBeInTheDocument()
     expect(listMyWorkMock).toHaveBeenCalled()
+  })
+})
+
+describe('authenticated shell', () => {
+  beforeEach(() => {
+    listProjectsMock.mockReset()
+    listProjectsMock.mockResolvedValue(emptyProjectsPage)
+  })
+
+  it('renders the top bar, triggers, rail, and account menu for an authenticated user', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Messor', level: 1 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Çalışma alanı')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Ara' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Oluştur' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sinyaller' })).toBeInTheDocument()
+
+    const rail = screen.getByRole('navigation', { name: 'Ana gezinme' })
+    expect(within(rail).getByRole('link', { name: 'Projeler' })).toBeInTheDocument()
+    expect(
+      within(rail).getByRole('link', { name: 'Görevlerim' }),
+    ).toBeInTheDocument()
+
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
+    expect(screen.getByText('Organizasyon yöneticisi')).toBeInTheDocument()
+    expect(screen.getByText('admin@demo.messor.app')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Çıkış yap' }),
+    ).toBeInTheDocument()
+  })
+
+  it('marks the active rail link with aria-current', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    expect(screen.getByRole('link', { name: 'Projeler' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      screen.getByRole('link', { name: 'Görevlerim' }),
+    ).not.toHaveAttribute('aria-current')
+  })
+
+  it('collapses and expands the project rail via the toggle', async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const expandToggle = screen.getByRole('button', {
+      name: 'Proje çubuğunu daralt',
+    })
+    expect(expandToggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(expandToggle)
+    expect(
+      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(
+      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
+    )
+    expect(
+      screen.getByRole('button', { name: 'Proje çubuğunu daralt' }),
+    ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('collapses the project rail with keyboard activation', async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const toggle = screen.getByRole('button', {
+      name: 'Proje çubuğunu daralt',
+    })
+    toggle.focus()
+    await user.keyboard('{Enter}')
+
+    expect(
+      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
+    ).toHaveAttribute('aria-expanded', 'false')
   })
 })

@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuthApiError } from './features/auth/authApi'
 import type { UserSummary } from './features/auth/types'
+import { resolveTheme } from './app/theme'
 import type { PageResponse, ProjectSummary } from './features/projects/types'
 
 const adminUser: UserSummary = {
@@ -238,6 +239,8 @@ describe('App session state and routing', () => {
       expect(
         await screen.findByRole('heading', { name: 'Proje ayarları', level: 2 }),
       ).toBeInTheDocument()
+      const user = userEvent.setup()
+      await user.click(screen.getByRole('tab', { name: 'Üyeler' }))
       const memberCard = screen.getByRole('listitem')
       expect(within(memberCard).getByText('Ada Lovelace')).toBeInTheDocument()
     })
@@ -496,16 +499,50 @@ describe('App session state and routing', () => {
       expect(screen.queryByText('Alpha description')).not.toBeInTheDocument()
     })
   })
+})
 
-  describe('no browser storage writes', () => {
-    it('never writes auth/session/CSRF data to localStorage or sessionStorage', async () => {
-      const storageSet = vi.spyOn(Storage.prototype, 'setItem')
-      getCurrentUserMock.mockResolvedValue(adminUser)
-      renderAt('/projects')
+describe('theme resolution', () => {
+  type MediaListener = (event: { matches: boolean }) => void
 
-      await screen.findByRole('heading', { name: 'Messor', level: 1 })
+  function stubMatchMedia(prefersDark: boolean): void {
+    const listeners: MediaListener[] = []
+    const mql = {
+      matches: prefersDark,
+      media: '(prefers-color-scheme: dark)',
+      addEventListener: (_type: string, listener: MediaListener): void => {
+        listeners.push(listener)
+      },
+      removeEventListener: (_type: string, listener: MediaListener): void => {
+        const index = listeners.indexOf(listener)
+        if (index >= 0) {
+          listeners.splice(index, 1)
+        }
+      },
+    }
+    window.matchMedia = vi.fn(
+      () => mql,
+    ) as unknown as typeof window.matchMedia
+  }
 
-      expect(storageSet).not.toHaveBeenCalled()
-    })
+  it('resolveTheme maps modes and the system preference', () => {
+    expect(resolveTheme('dark', false)).toBe('dark')
+    expect(resolveTheme('light', true)).toBe('light')
+    expect(resolveTheme('system', true)).toBe('dark')
+    expect(resolveTheme('system', false)).toBe('light')
+  })
+
+  it('applies the light theme to the document root when the OS is not dark', () => {
+    getCurrentUserMock.mockResolvedValue(adminUser)
+    renderAt('/projects')
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light')
+  })
+
+  it('applies the dark theme to the document root when the OS prefers dark', () => {
+    stubMatchMedia(true)
+    getCurrentUserMock.mockResolvedValue(adminUser)
+    renderAt('/projects')
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
   })
 })

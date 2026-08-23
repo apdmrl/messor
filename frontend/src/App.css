@@ -13,8 +13,8 @@
   min-height: 100dvh;
   width: 100%;
   padding: 1.5rem;
-  background: var(--color-bg);
-  color: var(--color-ink);
+  background: rgb(var(--messor-canvas));
+  color: rgb(var(--messor-text-primary));
   text-align: center;
 }
 
@@ -26,7 +26,7 @@
 }
 
 .app-status__message {
-  color: var(--color-danger) !important;
+  color: rgb(var(--messor-signal-danger)) !important;
   font-weight: 600;
 }
 
@@ -36,19 +36,19 @@
   padding: 0.625rem 1.25rem;
   font: inherit;
   font-weight: 600;
-  color: var(--color-surface);
-  background: var(--color-primary);
+  color: rgb(var(--messor-surface-inverse));
+  background: rgb(var(--messor-signal-active));
   border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: var(--messor-radius-card);
   cursor: pointer;
 }
 
 .app-status__retry:hover {
-  background: var(--color-primary-strong);
+  background: rgb(var(--messor-signal-active-soft));
 }
 
 .app-status__retry:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid rgb(var(--messor-signal-active));
   outline-offset: 2px;
 }
 
@@ -63,9 +63,9 @@
   max-width: 40rem;
   margin: 0 auto;
   padding: 1.5rem;
-  background: var(--color-surface);
-  border: 1px solid rgba(31, 42, 36, 0.1);
-  border-radius: 0.75rem;
+  background: rgb(var(--messor-surface-1));
+  border: 1px solid rgb(var(--messor-border-subtle));
+  border-radius: var(--messor-radius-card);
 }
 
 .future-package__heading {
@@ -73,12 +73,12 @@
   font-size: 1.25rem;
   line-height: 1.2;
   font-weight: 700;
-  color: var(--color-ink);
+  color: rgb(var(--messor-text-primary));
 }
 
 .future-package__text {
   margin: 0;
   font-size: 1rem;
   line-height: 1.5;
-  color: var(--color-muted);
+  color: rgb(var(--messor-text-secondary));
 }
