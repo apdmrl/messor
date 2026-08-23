@@ -259,7 +259,6 @@ export function MyWorkPage(): ReactElement {
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     const maxProjectCount = projects.reduce((max, p) => Math.max(max, p.count), 0)
     return {
-      assigned: myWorkQuery.data?.totalItems ?? 0,
       inProgress: count(IN_PROGRESS_CODE),
       queue: count(QUEUE_CODE),
       completed: count(COMPLETED_CODE),
@@ -285,7 +284,7 @@ export function MyWorkPage(): ReactElement {
 
   return (
     <div className="my-work">
-      <div className="my-work__layout">
+      <div className={railOpen ? 'my-work__layout' : 'my-work__layout my-work__layout--rail-collapsed'}>
         <div className="my-work__content">
           <header className="my-work__header">
             <h2 className="my-work__heading">Görevlerim</h2>
@@ -418,7 +417,10 @@ export function MyWorkPage(): ReactElement {
         </div>
 
         {myWorkQuery.isSuccess && myWorkQuery.data.items.length > 0 && (
-          <aside className="my-work__rail" aria-label={WORKLOAD_LABEL}>
+          <aside
+            className={railOpen ? 'my-work__rail' : 'my-work__rail my-work__rail--collapsed'}
+            aria-label={WORKLOAD_LABEL}
+          >
             <div className="my-work__rail-head">
               <h3 className="my-work__rail-title">{WORKLOAD_LABEL}</h3>
               <button
@@ -431,13 +433,13 @@ export function MyWorkPage(): ReactElement {
                 {railOpen ? 'Gizle' : 'Göster'}
               </button>
             </div>
-            {railOpen && (
-              <div id="my-work-rail-body" className="my-work__rail-body">
+              <div
+                id="my-work-rail-body"
+                className="my-work__rail-body"
+                hidden={!railOpen}
+              >
+                <p className="my-work__rail-scope">Bu sayfadaki işler.</p>
                 <dl className="my-work__workload">
-                  <div className="my-work__workload-row">
-                    <dt>Atanan</dt>
-                    <dd>{workload.assigned}</dd>
-                  </div>
                   <div className="my-work__workload-row">
                     <dt>Sürüyor</dt>
                     <dd>{workload.inProgress}</dd>
@@ -479,7 +481,6 @@ export function MyWorkPage(): ReactElement {
                   </div>
                 )}
               </div>
-            )}
           </aside>
         )}
       </div>

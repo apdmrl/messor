@@ -403,27 +403,52 @@ describe('MyWorkPage', () => {
     renderMyWork()
 
     const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
-    expect(within(rail).getByText('Atanan')).toBeInTheDocument()
+    expect(within(rail).getByText('Bu sayfadaki işler.')).toBeInTheDocument()
     expect(within(rail).getByText('Sürüyor')).toBeInTheDocument()
     expect(within(rail).getByText('Kuyruk')).toBeInTheDocument()
     expect(within(rail).getByText('Tamamlanan')).toBeInTheDocument()
     // Per-project active-work bar label and count (name resolves after meta).
     expect(await within(rail).findByText('Alpha Project')).toBeInTheDocument()
-    expect(within(rail).getAllByText('2').length).toBeGreaterThan(0)
+    expect(within(rail).getByText('2')).toBeInTheDocument()
   })
 
-  it('collapses the workload rail body', async () => {
+  it('labels the workload rail as current-page and never shows a global aggregate', async () => {
+    // totalItems is 3 but only 1 item is on this page; the rail must show only
+    // the page-local count, never the global total.
+    listMyWorkMock.mockResolvedValue(multiPage)
+    renderMyWork()
+
+    const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
+    expect(within(rail).getByText('Bu sayfadaki işler.')).toBeInTheDocument()
+    expect(within(rail).getAllByText('1').length).toBeGreaterThan(0)
+    expect(within(rail).queryByText('3')).toBeNull()
+  })
+
+  it('keeps the workload rail page-scoped when a filter is active', async () => {
+    listMyWorkMock.mockResolvedValue(pageWithIssues)
+    renderMyWork('/my-work?status=IN_PROGRESS')
+
+    const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
+    expect(within(rail).getByText('Bu sayfadaki işler.')).toBeInTheDocument()
+  })
+
+  it('collapses the rail so the column contracts while staying reachable', async () => {
     listMyWorkMock.mockResolvedValue(pageWithIssues)
     const user = userEvent.setup()
     renderMyWork()
 
     const rail = await screen.findByRole('complementary', { name: 'İş yükü' })
-    expect(within(rail).getByText('Atanan')).toBeInTheDocument()
+    const layout = rail.parentElement as HTMLElement
+    expect(layout.className).not.toContain('my-work__layout--rail-collapsed')
 
     await user.click(within(rail).getByRole('button', { name: 'Gizle' }))
-    await waitFor(() => {
-      expect(within(rail).queryByText('Atanan')).toBeNull()
-    })
+
+    // The column contracts: the layout switches to a narrow rail track.
+    expect(layout.className).toContain('my-work__layout--rail-collapsed')
+    // The disclosure target stays mounted (hidden) so aria-controls resolves.
+    const body = document.getElementById('my-work-rail-body') as HTMLElement
+    expect(body).not.toBeNull()
+    expect(body.hidden).toBe(true)
     expect(
       within(rail).getByRole('button', { name: 'Göster' }),
     ).toBeInTheDocument()
