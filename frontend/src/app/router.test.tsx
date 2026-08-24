@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { routes } from './router'
 import { SessionContext } from './session'
 import type { SessionContextValue } from './session'
+import { ApiError } from './apiClient'
 import type {
   PageResponse,
   ProjectDetail,
   ProjectMember,
+  ProjectRole,
   ProjectSummary,
 } from '../features/projects/types'
 import type { Issue, IssuePage } from '../features/issues/types'
@@ -30,12 +33,44 @@ const projectDetail: ProjectDetail = {
   ],
 }
 
+const emptyProjectsPage: PageResponse<ProjectSummary> = {
+  items: [],
+  page: 0,
+  size: 100,
+  totalItems: 0,
+  totalPages: 0,
+}
 const emptyPage: IssuePage = {
   items: [],
   page: 0,
   size: 100,
   totalItems: 0,
   totalPages: 0,
+}
+const listIssueFixture: Issue = {
+  id: 'i-1',
+  issueKey: 'MES-1',
+  projectKey: 'MES',
+  number: 1,
+  type: 'TASK',
+  title: 'First task',
+  description: 'A description',
+  statusCode: 'TO_DO',
+  reporterId: '11111111-1111-1111-1111-111111111111',
+  assigneeId: null,
+  rank: 0,
+  archived: false,
+  version: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+const populatedPage: IssuePage = {
+  items: [listIssueFixture],
+  page: 0,
+  size: 100,
+  totalItems: 1,
+  totalPages: 1,
 }
 
 vi.mock('../features/projects/projectsApi', async (importOriginal) => {
@@ -156,7 +191,7 @@ describe('router', () => {
       await screen.findByRole('heading', { name: 'Messor', level: 2 }),
     ).toBeInTheDocument()
     expect(screen.getByText('MES')).toBeInTheDocument()
-    expect(screen.getByText('İssue’lar')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'İşler' })).toBeInTheDocument()
   })
 
   it('renders the issue drawer for a direct /projects/:projectKey/issues/:issueKey load', async () => {
@@ -196,6 +231,20 @@ describe('router', () => {
     expect(screen.getByRole('tab', { name: 'Yorumlar' })).toBeInTheDocument()
   })
 
+  it('routes /projects/:projectKey/members to the members page for an authenticated user', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    renderRouterAt(authenticatedSession, ['/projects/MES/members'])
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Üyeler ve erişim',
+        level: 2,
+      }),
+    ).toBeInTheDocument()
+    expect(listProjectMembersMock).toHaveBeenCalledWith('MES')
+  })
+
   it('redirects an anonymous user away from the protected board route to login', async () => {
     renderRouter(anonymousSession)
 
@@ -225,5 +274,372 @@ describe('router', () => {
       await screen.findByRole('heading', { name: 'Görevlerim', level: 2 }),
     ).toBeInTheDocument()
     expect(listMyWorkMock).toHaveBeenCalled()
+  })
+
+  it('routes /projects/:projectKey/overview to the project landing surface', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    renderRouterAt(authenticatedSession, ['/projects/MES/overview'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Messor', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('MES')).toBeInTheDocument()
+    const overviewActions = screen.getByRole('navigation', {
+      name: 'Proje kısayolları',
+    })
+    expect(within(overviewActions).getByRole('link', { name: 'Pano' })).toHaveAttribute(
+      'href',
+      '/projects/MES/board',
+    )
+    expect(within(overviewActions).getByRole('link', { name: 'İşler' })).toHaveAttribute(
+      'href',
+      '/projects/MES/issues',
+    )
+  })
+
+  it('renders the issue list contract (not the board) at /projects/:projectKey/issues', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(populatedPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues'])
+
+    expect(await screen.findByText('First task')).toBeInTheDocument()
+    // The list view must not alias the board surface.
+    expect(
+      screen.queryByRole('region', { name: 'Kanban panosu' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('routes /projects/:projectKey/issues/new to the issue create form', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues/new'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Yeni iş' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Başlık')).toBeInTheDocument()
+  })
+
+  it('routes /projects/:projectKey/issues/:issueKey/edit to the issue edit form', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    getIssueMock.mockResolvedValue(listIssueFixture)
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues/MES-1/edit'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'İş düzenle' }),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the session-expired boundary at /auth/session-expired', async () => {
+    renderRouterAt(authenticatedSession, ['/auth/session-expired'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Oturum sona erdi' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Tekrar giriş yap' })).toHaveAttribute(
+      'href',
+      '/login',
+    )
+  })
+})
+
+describe('authenticated shell', () => {
+  beforeEach(() => {
+    listProjectsMock.mockReset()
+    listProjectsMock.mockResolvedValue(emptyProjectsPage)
+  })
+
+  it('renders the top bar, triggers, rail, and account menu for an authenticated user', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Messor', level: 1 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Çalışma alanı')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Ara' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Oluştur' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sinyaller' })).toBeInTheDocument()
+
+    const rail = screen.getByRole('navigation', { name: 'Ana gezinme' })
+    expect(within(rail).getByRole('link', { name: 'Projeler' })).toBeInTheDocument()
+    expect(
+      within(rail).getByRole('link', { name: 'Görevlerim' }),
+    ).toBeInTheDocument()
+
+    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument()
+    expect(screen.getByText('Organizasyon yöneticisi')).toBeInTheDocument()
+    expect(screen.getByText('admin@demo.messor.app')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Çıkış yap' }),
+    ).toBeInTheDocument()
+  })
+
+  it('marks the active rail link with aria-current', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    expect(screen.getByRole('link', { name: 'Projeler' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      screen.getByRole('link', { name: 'Görevlerim' }),
+    ).not.toHaveAttribute('aria-current')
+  })
+
+  it('collapses and expands the project rail via the toggle', async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const expandToggle = screen.getByRole('button', {
+      name: 'Proje çubuğunu daralt',
+    })
+    expect(expandToggle).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(expandToggle)
+    expect(
+      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(
+      screen.getByRole('button', { name: 'Proje çubuğunu genişlet' }),
+    )
+    expect(
+      screen.getByRole('button', { name: 'Proje çubuğunu daralt' }),
+    ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('closes the account menu on Escape and restores focus to the summary', async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const summary = screen
+      .getByText('Ada Lovelace')
+      .closest('summary') as HTMLElement
+    await user.click(summary)
+
+    const details = summary.closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(true)
+
+    await user.keyboard('{Escape}')
+
+    expect(details.open).toBe(false)
+    expect(summary).toHaveFocus()
+  })
+
+  function renderProject(role: ProjectRole): void {
+    getProjectMock.mockResolvedValue({ ...projectDetail, currentUserRole: role })
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+  }
+
+
+  it("renders project navigation with only routes registered by the router", async () => {
+    renderProject("PROJECT_LEAD")
+    await screen.findByRole("heading", { name: "Messor", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(within(rail).getByRole("link", { name: "Pano" })).toHaveAttribute(
+      "href",
+      "/projects/MES/board",
+    )
+    expect(within(rail).getByRole("link", { name: "Ayarlar" })).toHaveAttribute(
+      "href",
+      "/projects/MES/settings",
+    )
+    expect(within(rail).getByRole("link", { name: "Pano" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    )
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).not.toHaveAttribute("aria-current")
+    // No dead links: only destinations with registered routes are shown.
+    expect(
+      within(rail).queryByRole("link", { name: "İşler" }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Aktivite" }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Üyeler" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("hides lead-only project links for a project member", async () => {
+    renderProject("MEMBER")
+    await screen.findByRole("heading", { name: "Messor", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(within(rail).getByRole("link", { name: "Pano" })).toBeInTheDocument()
+    expect(
+      within(rail).queryByRole("link", { name: "Ayarlar" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("keeps primary navigation accessible across rail collapse states", async () => {
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ["/projects"])
+    await screen.findByRole("heading", { name: "Projeler", level: 2 })
+
+    const rail = screen.getByRole("navigation", { name: "Ana gezinme" })
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).toBeInTheDocument()
+    expect(
+      within(rail).getByRole("link", { name: "Görevlerim" }),
+    ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: "Proje çubuğunu daralt" }),
+    )
+    expect(
+      screen.getByRole("button", { name: "Proje çubuğunu genişlet" }),
+    ).toHaveAttribute("aria-expanded", "false")
+    expect(
+      within(rail).getByRole("link", { name: "Projeler" }),
+    ).toBeInTheDocument()
+    expect(
+      within(rail).getByRole("link", { name: "Görevlerim" }),
+    ).toBeInTheDocument()
+
+  })
+  it('top-bar create navigates to the issue create surface when a project is in context', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+    await screen.findByRole('heading', { name: 'Messor', level: 2 })
+
+    await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+    // The real issue-create surface for the project renders.
+    expect(
+      await screen.findByRole('heading', { name: 'Yeni iş' }),
+    ).toBeInTheDocument()
+  })
+
+  it('top-bar create without a project goes to the projects list', async () => {
+    listProjectsMock.mockResolvedValue(emptyProjectsPage)
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/my-work'])
+    await screen.findByRole('heading', { name: 'Görevlerim', level: 2 })
+
+    await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Projeler', level: 2 }),
+    ).toBeInTheDocument()
+  })
+
+  it('search and signals are non-actionable indicators, never enabled silent buttons', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const search = screen.getByRole('button', { name: 'Ara' })
+    const signals = screen.getByRole('button', { name: 'Sinyaller' })
+    expect(search).toBeDisabled()
+    expect(search).toHaveAttribute('aria-disabled', 'true')
+    expect(signals).toBeDisabled()
+    expect(signals).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+describe('shared route boundaries', () => {
+  const loadingSession: SessionContextValue = {
+    session: { status: 'loading' },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
+
+  const errorSession: SessionContextValue = {
+    session: { status: 'error' },
+    bootstrap: () => {},
+    handleAuthenticated: () => {},
+    handleLogout: async () => {},
+    logoutPending: false,
+    logoutError: null,
+  }
+
+  it('renders the neutral not-found boundary for an invalid route', async () => {
+    renderRouterAt(authenticatedSession, ['/no/such/route'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Sayfa bulunamadı' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Projelere dön' }),
+    ).toHaveAttribute('href', '/projects')
+  })
+
+  it('renders a neutral restricted boundary for an inaccessible project route', async () => {
+    getProjectMock.mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'denied'))
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Erişim kısıtlı' }),
+    ).toBeInTheDocument()
+    // Neutral: the board content and project identity must not render.
+    expect(
+      screen.queryByRole('heading', { name: 'İşler' }),
+    ).not.toBeInTheDocument()
+    const body = document.body.textContent ?? ''
+    expect(body).not.toContain('denied')
+    // The project rail must not advertise the inaccessible project.
+    expect(
+      screen.queryByRole('link', { name: 'Pano' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Projelere dön' })).toHaveAttribute(
+      'href',
+      '/projects',
+    )
+  })
+
+  it('does not gate project routes on a missing project to a forbidden or missing state', async () => {
+    // A project the member can read renders normally (not restricted).
+    getProjectMock.mockResolvedValue({ ...projectDetail, currentUserRole: 'MEMBER' })
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'İşler' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Erişim kısıtlı' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows the loading boundary while the session is resolving', async () => {
+    renderRouterAt(loadingSession, ['/projects'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Yükleniyor…' }),
+    ).toBeInTheDocument()
+    // Must not bounce to login before the session settles.
+    expect(
+      screen.queryByRole('heading', { name: 'Oturum aç', level: 2 }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('redirects a failed session to login', async () => {
+    renderRouterAt(errorSession, ['/projects'])
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Çalışma alanına devam etmek için bilgilerini gir.'),
+      ).toBeInTheDocument()
+    })
   })
 })

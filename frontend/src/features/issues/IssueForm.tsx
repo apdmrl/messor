@@ -98,11 +98,11 @@ export function IssueForm({
       ref={formRef}
       className="issue-form"
       onSubmit={handleSubmit}
-      aria-label={mode === 'create' ? 'Yeni issue oluştur' : 'Issue düzenle'}
+      aria-label={mode === 'create' ? 'Yeni iş oluştur' : 'İş düzenle'}
     >
       <div className="issue-form__heading-row">
         <h3 className="issue-form__heading">
-          {mode === 'create' ? 'Yeni issue' : 'Issue düzenle'}
+          {mode === 'create' ? 'Yeni iş' : 'İş düzenle'}
         </h3>
         <button
           type="button"

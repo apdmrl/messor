@@ -4,16 +4,28 @@ import type { WorkflowStatus } from '../projects/types'
 /**
  * Pure, deterministic board-ordering helpers. These functions own the rules for
  * grouping issues into server-ordered workflow columns, ordering cards, and
- * computing the exact {@link MoveIssueInput} neighbor payload for a move. They
- * are deliberately free of React, network, and query state so they can be unit
- * tested in isolation and reused by both the drag path and the accessible
- * movement-menu path without duplicating business logic.
+ * deriving an optimistic move result plus the server insertion neighbors from a
+ * target insertion index. It is deliberately free of React, network, and query
+ * state so it can be unit tested in isolation.
  */
 
 export interface BoardColumn {
   statusCode: string
   displayName: string
   issues: Issue[]
+}
+
+/**
+ * Default WIP (work-in-progress) threshold used for the client-side column
+ * overload warning. This is a presentational guard only: the backend has no WIP
+ * limit contract, so the board never blocks movement based on it. A column whose
+ * card count exceeds the limit is flagged {@code overburdened}.
+ */
+export const WIP_LIMIT = 5
+
+/** True when a column holds more cards than the given (default) WIP limit. */
+export function isOverburdened(count: number, limit = WIP_LIMIT): boolean {
+  return count > limit
 }
 
 /**
@@ -36,11 +48,10 @@ export function normalizeWorkflowStatuses(
 /**
  * Order cards within a column using server rank ascending, then issue number
  * ascending, then issueKey as a final deterministic tie-breaker. Archived
- * issues are excluded by default (they are never drop/reorder targets and never
- * participate in DnD math); pass {@code includeArchived} only for read-only
- * display when the archive filter includes archived issues. Workflow position
- * (not alphabetical status) is the column order; status display labels come
- * only from {@code workflowStatuses}.
+ * issues are excluded by default; pass {@code includeArchived} only for
+ * read-only display when the archive filter includes archived issues. Workflow
+ * position (not alphabetical status) is the column order; status display labels
+ * come only from {@code workflowStatuses}.
  */
 export function columnIssues(
   issues: Issue[],
@@ -89,194 +100,13 @@ export function buildColumns(
   }))
 }
 
-export interface DropIndexParams {
-  issues: Issue[]
-  draggedKey: string
-  overKey: string
-}
-
 /**
- * Resolve the insertion index (in the reduced destination column, after the
- * active card is removed) for a drop of {@code draggedKey} over {@code overKey}.
- * Returns {@code null} for a true no-op (dropping a card on itself) so the
- * caller never reaches the API.
- *
- * Direction rule:
- * - Cross-column: always insert before the over card (a tested, explicit rule).
- * - Same-column downward (dragged originally above the over card): insert after
- *   the over card, compensating for the active card's own removal.
- * - Same-column upward (dragged originally below the over card): insert before
- *   the over card.
- */
-export function resolveDropIndex(params: DropIndexParams): number | null {
-  const { issues, draggedKey, overKey } = params
-  if (draggedKey === overKey) {
-    return null
-  }
-  const dragged = issues.find((issue) => issue.issueKey === draggedKey)
-  const over = issues.find((issue) => issue.issueKey === overKey)
-  if (dragged === undefined || over === undefined) {
-    return null
-  }
-
-  const source = columnIssues(issues, dragged.statusCode)
-  const destination = columnIssues(issues, over.statusCode).filter(
-    (issue) => issue.issueKey !== draggedKey,
-  )
-  const overIndexInDestination = destination.findIndex(
-    (issue) => issue.issueKey === overKey,
-  )
-  if (overIndexInDestination === -1) {
-    return null
-  }
-
-  if (dragged.statusCode !== over.statusCode) {
-    return overIndexInDestination
-  }
-
-  const sourceIndex = source.findIndex((issue) => issue.issueKey === draggedKey)
-  const overSourceIndex = source.findIndex((issue) => issue.issueKey === overKey)
-  if (sourceIndex === -1 || overSourceIndex === -1) {
-    return null
-  }
-
-  if (sourceIndex < overSourceIndex) {
-    return overIndexInDestination + 1
-  }
-  return overIndexInDestination
-}
-
-export interface DragEndResolution {
-  targetStatusCode: string
-  targetIndex: number
-}
-
-/**
- * Normalize a dnd-kit drag-end event (active/over ids) into the target status
- * and insertion index that {@link computeMove} consumes. This is the pointer
- * drag-end path: a card over id targets that card's column, and a column id
- * targets the empty/whitespace append. Returns {@code null} to signal a true
- * no-op or an unknown target so no API call is issued.
- */
-export function resolveDragEnd(params: {
-  issues: Issue[]
-  activeId: string
-  overId: string
-}): DragEndResolution | null {
-  const { issues, activeId, overId } = params
-  if (overId.startsWith('column-')) {
-    return {
-      targetStatusCode: overId.slice('column-'.length),
-      targetIndex: Number.MAX_SAFE_INTEGER,
-    }
-  }
-  const over = issues.find((issue) => issue.issueKey === overId)
-  if (over === undefined) {
-    return null
-  }
-  const index = resolveDropIndex({ issues, draggedKey: activeId, overKey: overId })
-  if (index === null) {
-    return null
-  }
-  return { targetStatusCode: over.statusCode, targetIndex: index }
-}
-
-export type DragEndAnnouncement = 'moved' | 'unchanged'
-
-/**
- * Client-owned Turkish announcement text for a drag end. {@code 'moved'} is
- * used only when a valid move was actually accepted for mutation; every other
- * outcome (self-drop, invalid/unknown target, no-op, lock-rejected) uses the
- * neutral fixed string. Never interpolates raw status or hostile server text.
- */
-export function dragEndAnnouncement(
-  activeId: string,
-  outcome: DragEndAnnouncement,
-): string {
-  return outcome === 'moved'
-    ? `Kart ${activeId} yeni konumuna taşındı.`
-    : 'Kartın konumu değişmedi.'
-}
-
-export interface MoveComputation {
-  /** Server-ordered workflow statuses used to validate the target status. */
-  workflowStatuses: WorkflowStatus[]
-  issues: Issue[]
-  draggedKey: string
-  targetStatusCode: string
-  /** Intended index of the dragged card in the destination column (after removal). */
-  targetIndex: number
-}
-
-export type ComputeMoveResult =
-  | { kind: 'invalid' }
-  | { kind: 'noop' }
-  | {
-      kind: 'move'
-      targetIndex: number
-      expectedVersion: number
-      payload: MoveNeighborPayload
-    }
-
-export interface MoveNeighborPayload {
-  beforeIssueKey: string | null
-  afterIssueKey: string | null
-}
-
-/**
- * Compute the exact neighbor payload for a move, following the board-ordering
- * contract. Unknown target statuses and a missing dragged issue fail closed
- * ({@code invalid}). A same-column drop that leaves the effective order
- * unchanged is a {@code noop} and must not reach the API.
- */
-export function computeMove(params: MoveComputation): ComputeMoveResult {
-  const { workflowStatuses, issues, draggedKey, targetStatusCode, targetIndex } = params
-
-  const dragged = issues.find((issue) => issue.issueKey === draggedKey)
-  if (dragged === undefined) {
-    return { kind: 'invalid' }
-  }
-
-  const validStatuses = new Set(workflowStatuses.map((status) => status.code))
-  if (!validStatuses.has(targetStatusCode)) {
-    return { kind: 'invalid' }
-  }
-
-  // Destination column after removing the moving issue.
-  const destination = columnIssues(issues, targetStatusCode).filter(
-    (issue) => issue.issueKey !== draggedKey,
-  )
-  const position = clampIndex(targetIndex, destination.length)
-
-  // A same-column drop that keeps the current order is a true no-op.
-  if (targetStatusCode === dragged.statusCode) {
-    const current = columnIssues(issues, dragged.statusCode).map((i) => i.issueKey)
-    const next = reorderedKeys(destination, dragged, position)
-    if (sameKeys(current, next)) {
-      return { kind: 'noop' }
-    }
-  }
-
-  const payload =
-    destination.length === 0
-      ? { beforeIssueKey: null, afterIssueKey: null }
-      : position >= destination.length
-        ? { beforeIssueKey: null, afterIssueKey: destination[destination.length - 1].issueKey }
-        : { beforeIssueKey: destination[position].issueKey, afterIssueKey: null }
-
-  return {
-    kind: 'move',
-    targetIndex: position,
-    expectedVersion: dragged.version,
-    payload,
-  }
-}
-
-/**
- * Return a new issue array reflecting an optimistic move: the dragged issue's
- * status is updated and it is inserted at {@code targetIndex} in the
- * destination column with an interleaved rank. The server version is never
- * fabricated (it stays at the last known server value).
+ * Return a new issue array reflecting an optimistic status-only move: the moved
+ * issue's status is updated and it is inserted into the destination column at
+ * {@code targetIndex} with an interleaved rank. The server version is never
+ * fabricated (it stays at the last known server value). A {@code targetIndex}
+ * beyond the destination length clamps to the end, which is the status-change
+ * append path.
  */
 export function applyOptimisticMove(
   issues: Issue[],
@@ -306,6 +136,33 @@ export function applyOptimisticMove(
   return others.concat(updated)
 }
 
+/**
+ * Map a target insertion index in the destination column to the before/after
+ * neighbor keys the server expects. The destination is computed with the moved
+ * issue excluded (mirroring {@link applyOptimisticMove}), so the keys reference
+ * the list the backend also operates on after removing a same-status move.
+ *
+ * <p>Exactly one neighbor is emitted to satisfy the move request's mutual
+ * exclusion: the next card is preferred (insert before it); only when appending
+ * at the end does it fall back to the previous card (insert after it).</p>
+ */
+export function moveNeighbors(
+  issues: Issue[],
+  params: { draggedKey: string; targetStatusCode: string; targetIndex: number },
+): { beforeIssueKey: string | null; afterIssueKey: string | null } {
+  const { draggedKey, targetStatusCode, targetIndex } = params
+  const others = issues.filter((issue) => issue.issueKey !== draggedKey)
+  const destination = columnIssues(others, targetStatusCode)
+  const position = clampIndex(targetIndex, destination.length)
+  const beforeIssueKey =
+    position < destination.length ? destination[position].issueKey : null
+  const afterIssueKey =
+    beforeIssueKey === null && position > 0
+      ? destination[position - 1].issueKey
+      : null
+  return { beforeIssueKey, afterIssueKey }
+}
+
 function interleaveRank(prevRank: number, nextRank: number): number {
   if (Number.isFinite(prevRank) && Number.isFinite(nextRank)) {
     return Math.floor((prevRank + nextRank) / 2)
@@ -317,20 +174,6 @@ function interleaveRank(prevRank: number, nextRank: number): number {
     return prevRank + 1
   }
   return 0
-}
-
-function reorderedKeys(
-  destination: Issue[],
-  dragged: Issue,
-  position: number,
-): string[] {
-  const keys = destination.map((issue) => issue.issueKey)
-  keys.splice(position, 0, dragged.issueKey)
-  return keys
-}
-
-function sameKeys(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((key, index) => key === b[index])
 }
 
 function clampIndex(index: number, length: number): number {

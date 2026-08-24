@@ -66,6 +66,10 @@ export function IssueDrawer({
 }: IssueDrawerProps): ReactElement {
   const [activeTab, setActiveTab] = useState<TabId>('activity')
   const rootRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    activity: null,
+    comments: null,
+  })
 
   const canComment = currentUserRole === 'PROJECT_LEAD' || currentUserRole === 'MEMBER'
   const isModerator = currentUserRole === 'PROJECT_LEAD'
@@ -139,7 +143,12 @@ export function IssueDrawer({
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
   }, [handleKeyDown])
 
   // Initial focus lands on the close button so a keyboard/screen-reader user
@@ -164,6 +173,7 @@ export function IssueDrawer({
     }
     event.preventDefault()
     setActiveTab(next)
+    tabRefs.current[next]?.focus()
   }
 
   return (
@@ -196,7 +206,7 @@ export function IssueDrawer({
             type="button"
             ref={closeButtonRef}
             className="issue-drawer__close"
-            aria-label="İş kapanış panelini kapat"
+            aria-label="İş detay panelini kapat"
             onClick={handleCloseButton}
             disabled={escapeBlocked}
             aria-disabled={escapeBlocked}
@@ -238,6 +248,9 @@ export function IssueDrawer({
               type="button"
               role="tab"
               id={`issue-tab-${tab}`}
+              ref={(element) => {
+                tabRefs.current[tab] = element
+              }}
               aria-selected={activeTab === tab}
               aria-controls={`issue-tabpanel-${tab}`}
               tabIndex={activeTab === tab ? 0 : -1}

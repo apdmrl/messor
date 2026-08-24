@@ -3,7 +3,6 @@ import {
   DEFAULT_FILTERS,
   MY_WORK_FILTER_CONTEXT,
   PROJECT_FILTER_CONTEXT,
-  canReorderBoard,
   canonicalQueryString,
   parseFilters,
   serializeApiFilters,
@@ -259,32 +258,5 @@ describe('issueFilters parse/normalize/serialize', () => {
     const myApi = serializeApiFilters(state, MY)
     expect(myApi.get('project')).toBe('ALPHA')
     expect(myApi.has('assignee')).toBe(false)
-  })
-
-  // ------------------------------------------------------------------
-  // Move completeness invariant
-  // ------------------------------------------------------------------
-
-  it('allows board reordering only on a complete active column', () => {
-    const full: IssueFilterState = {
-      project: null,
-      type: null,
-      status: null,
-      assignee: null,
-      archive: 'active',
-      sort: { field: 'number', direction: 'asc' },
-      page: 0,
-      size: 100,
-    }
-    expect(canReorderBoard(full, 1)).toBe(true)
-
-    expect(canReorderBoard({ ...full, archive: 'all' }, 1)).toBe(false)
-    expect(canReorderBoard({ ...full, archive: 'archived' }, 1)).toBe(false)
-    expect(canReorderBoard({ ...full, type: 'BUG' }, 1)).toBe(false)
-    expect(canReorderBoard({ ...full, status: 'TO_DO' }, 1)).toBe(false)
-    expect(canReorderBoard({ ...full, assignee: 'user-1' }, 1)).toBe(false)
-    expect(canReorderBoard({ ...full, page: 1 }, 1)).toBe(false)
-    expect(canReorderBoard(full, 2)).toBe(false)
-    expect(canReorderBoard(full, 0)).toBe(false)
   })
 })

@@ -276,6 +276,50 @@ describe('IssueComments', () => {
     })
   })
 
+  it('announces a successful new comment via a polite live region', async () => {
+    listIssueCommentsMock.mockResolvedValue([])
+    createCommentMock.mockResolvedValue(makeComment())
+    renderComments()
+    await screen.findByText('Henüz yorum yok.')
+
+    await userEvent.type(screen.getByLabelText('Yorum ekle'), 'a comment')
+    await userEvent.click(screen.getByRole('button', { name: 'Yorum yap' }))
+
+    expect(await screen.findByText('Yorum gönderildi.')).toBeInTheDocument()
+    const live = document.querySelector('[aria-live="polite"]')
+    expect(live).not.toBeNull()
+  })
+
+  it('re-announces two consecutive successful comment submissions', async () => {
+    listIssueCommentsMock.mockResolvedValue([])
+    let resolveCreate: (c: IssueComment) => void = () => {}
+    createCommentMock.mockImplementation(
+      () =>
+        new Promise<IssueComment>((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+    renderComments()
+    await screen.findByText('Henüz yorum yok.')
+
+    const input = screen.getByLabelText('Yorum ekle')
+    await userEvent.type(input, 'first')
+    await userEvent.click(screen.getByRole('button', { name: 'Yorum yap' }))
+    resolveCreate(makeComment({ body: 'first' }))
+    expect(await screen.findByText('Yorum gönderildi.')).toBeInTheDocument()
+
+    // Begin a second submission: the announcement must clear so the polite
+    // region goes empty→message and re-announces the next success.
+    await userEvent.type(input, 'second')
+    await userEvent.click(screen.getByRole('button', { name: 'Yorum yap' }))
+    const live = document.querySelector('[aria-live="polite"]')
+    expect(live?.textContent ?? '').toBe('')
+    expect(screen.queryByText('Yorum gönderildi.')).not.toBeInTheDocument()
+
+    resolveCreate(makeComment({ body: 'second' }))
+    expect(await screen.findByText('Yorum gönderildi.')).toBeInTheDocument()
+  })
+
   it('creates with whitespace preserved in the payload', async () => {
     listIssueCommentsMock.mockResolvedValue([])
     createCommentMock.mockResolvedValue(makeComment())

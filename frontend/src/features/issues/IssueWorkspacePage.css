@@ -310,3 +310,100 @@
 .issue-workspace__page-info {
   font-size: 0.9rem;
 }
+
+/* Warm workspace hierarchy */
+.issue-workspace {
+  max-width: 80rem;
+  gap: 1.5rem;
+  padding: 0;
+}
+
+.issue-workspace__nav {
+  gap: 0.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.issue-workspace__back {
+  min-height: 44px;
+  padding: 0 0.875rem;
+  color: var(--color-muted);
+  border-radius: var(--radius-md);
+  font-weight: 650;
+}
+
+.issue-workspace__back:hover {
+  color: var(--color-ink);
+  background: var(--color-surface-tint);
+  text-decoration: none;
+}
+
+.issue-workspace__back--current {
+  color: var(--color-primary-strong);
+  background: rgba(47, 93, 80, 0.12);
+}
+
+.issue-workspace__heading {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+}
+
+.issue-workspace__key {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.issue-workspace__create {
+  min-height: 46px;
+  padding: 0.625rem 1rem;
+  color: var(--color-surface);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.issue-workspace__create:hover:not(:disabled) {
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
+}
+
+.issue-workspace__banner {
+  color: var(--color-danger);
+  background: rgba(163, 58, 50, 0.07);
+  border: 1px solid rgba(163, 58, 50, 0.25);
+}
+
+.issue-workspace__status,
+.issue-workspace__empty {
+  color: var(--color-muted);
+  background: var(--color-surface-tint);
+  border: 1px solid var(--color-border);
+}
+
+/* Destination status shown when creating an issue from a board column. */
+.issue-workspace__create-status {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-primary-strong);
+  background: var(--color-surface-tint);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+
+/* Visually hidden persistent polite region for status-change announcements. */
+.issue-workspace__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

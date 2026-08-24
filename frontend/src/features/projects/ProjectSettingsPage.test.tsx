@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { UserEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ApiError } from '../../app/apiClient'
@@ -97,6 +98,10 @@ function renderSettingsPage(projectKey = 'MES'): QueryClient {
   return queryClient
 }
 
+async function openMembersTab(user: UserEvent): Promise<void> {
+  await user.click(screen.getByRole('tab', { name: 'Üyeler' }))
+}
+
 describe('ProjectSettingsPage', () => {
   beforeEach(() => {
     getProjectMock.mockReset()
@@ -111,17 +116,55 @@ describe('ProjectSettingsPage', () => {
   })
 
   describe('page states', () => {
-    it('shows a loading status while fetching project and members', () => {
+    it('shows a loading status while fetching project and members', async () => {
       getProjectMock.mockImplementation(
         () => new Promise<ProjectDetail>(() => {}),
       )
       listProjectMembersMock.mockImplementation(
         () => new Promise<ProjectMember[]>(() => {}),
       )
+      const user = userEvent.setup()
+      renderSettingsPage()
+      await openMembersTab(user)
+
+      expect(screen.getAllByRole('status').length).toBeGreaterThan(0)
+      expect(
+        screen.getByText('Proje bilgileri yükleniyor…'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('Üyelikler yükleniyor…')).toBeInTheDocument()
+    })
+
+    it('shows project-detail loading at page scope on a direct settings visit', async () => {
+      getProjectMock.mockImplementation(
+        () => new Promise<ProjectDetail>(() => {}),
+      )
+      listProjectMembersMock.mockResolvedValue([adminMember])
       renderSettingsPage()
 
-      expect(screen.getByRole('status')).toBeInTheDocument()
-      expect(screen.getByText('Üyelikler yükleniyor…')).toBeInTheDocument()
+      // Overview is the default section; the page reports the project-detail
+      // fetch without requiring the user to open the Members panel first.
+      expect(
+        screen.getByText('Proje bilgileri yükleniyor…'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a page-scope project-detail error on a direct settings visit', async () => {
+      getProjectMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'internal project secret'),
+      )
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      renderSettingsPage()
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(
+        'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
+      )
+      const body = document.body.textContent ?? ''
+      expect(body).not.toContain('internal project secret')
+      // The identity header does not render without project data.
+      expect(
+        screen.queryByRole('heading', { name: 'Messor', level: 3 }),
+      ).not.toBeInTheDocument()
     })
 
     it('renders the settings heading and navigation back to the board', async () => {
@@ -130,14 +173,33 @@ describe('ProjectSettingsPage', () => {
       renderSettingsPage()
 
       expect(
-        await screen.findByRole('heading', { name: 'Proje ayarları', level: 2 }),
+        await screen.findByRole('heading', {
+          name: 'Proje ayarları',
+          level: 2,
+        }),
       ).toBeInTheDocument()
       expect(
-        screen.getByRole('link', { name: 'Board’a dön' }),
+        screen.getByRole('link', { name: 'Panoya dön' }),
       ).toBeInTheDocument()
       expect(
         screen.getByRole('link', { name: 'Projelere dön' }),
       ).toBeInTheDocument()
+      // Project identity header renders name, key and role.
+      expect(
+        await screen.findByRole('heading', { name: 'Messor', level: 3 }),
+      ).toBeInTheDocument()
+      expect(screen.getAllByText('MES').length).toBeGreaterThan(0)
+      expect(screen.getByText('Proje lideri')).toBeInTheDocument()
+
+      // Section navigation exposes overview, workflow, members, appearance
+      // and danger zone entry points.
+      expect(
+        screen.getByRole('tab', { name: 'Genel Bakış' }),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('tab', { name: 'İş Akışı' }),
+      ).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Üyeler' })).toBeInTheDocument()
     })
 
     it('shows a safe error when the member list fails to load', async () => {
@@ -145,7 +207,9 @@ describe('ProjectSettingsPage', () => {
       listProjectMembersMock.mockRejectedValue(
         new ApiError(500, 'INTERNAL', 'internal member list secret'),
       )
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(
@@ -160,11 +224,13 @@ describe('ProjectSettingsPage', () => {
         new ApiError(500, 'INTERNAL', 'internal project detail secret'),
       )
       listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(
-        'Üyelikler yüklenemedi. Lütfen tekrar deneyin.',
+        'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
       )
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('internal project detail secret')
@@ -184,7 +250,9 @@ describe('ProjectSettingsPage', () => {
     it('shows an empty state when there are no members', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue([])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       expect(
         await screen.findByText('Henüz proje üyesi yok.'),
@@ -198,7 +266,9 @@ describe('ProjectSettingsPage', () => {
         memberMember,
         viewerMember,
       ])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       const memberList = await screen.findByRole('list', {
         name: 'Proje üyeleri',
@@ -221,11 +291,162 @@ describe('ProjectSettingsPage', () => {
     })
   })
 
+  describe('section navigation', () => {
+    it('shows read-only overview metadata with no edit controls', async () => {
+      getProjectMock.mockResolvedValue({
+        ...projectDetail,
+        description: 'Bir iz takip projesi.',
+      })
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      renderSettingsPage()
+
+      const overviewPanel = await screen.findByRole('tabpanel', {
+        name: 'Proje bilgileri',
+      })
+      expect(within(overviewPanel).getByText('Anahtar')).toBeInTheDocument()
+      expect(within(overviewPanel).getByText('MES')).toBeInTheDocument()
+      expect(within(overviewPanel).getByText('Açıklama')).toBeInTheDocument()
+      expect(
+        within(overviewPanel).getByText('Bir iz takip projesi.'),
+      ).toBeInTheDocument()
+      // Project metadata stays read-only: no edit inputs.
+      expect(
+        within(overviewPanel).queryByRole('textbox'),
+      ).not.toBeInTheDocument()
+      expect(
+        within(overviewPanel).queryByRole('button'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('lists workflow statuses in server order within the workflow section', async () => {
+      getProjectMock.mockResolvedValue({
+        ...projectDetail,
+        workflowStatuses: [
+          { code: 'TO_DO', displayName: 'Yapılacak', position: 0 },
+          { code: 'IN_PROGRESS', displayName: 'Sürüyor', position: 1 },
+          { code: 'DONE', displayName: 'Bitti', position: 2 },
+        ],
+      })
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+
+      await user.click(screen.getByRole('tab', { name: 'İş Akışı' }))
+
+      const workflowList = await screen.findByRole('list', {
+        name: 'İş akışı durumları',
+      })
+      const items = within(workflowList).getAllByRole('listitem')
+      expect(items).toHaveLength(3)
+      expect(items[0]).toHaveTextContent('Yapılacak')
+      expect(items[1]).toHaveTextContent('Sürüyor')
+      expect(items[2]).toHaveTextContent('Bitti')
+      expect(items[0]).toHaveTextContent('TO_DO')
+    })
+
+    it('shows an empty message when no workflow statuses exist', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+
+      await user.click(screen.getByRole('tab', { name: 'İş Akışı' }))
+
+      expect(
+        await screen.findByText('Henüz iş akışı durumu tanımlanmadı.'),
+      ).toBeInTheDocument()
+    })
+
+    it('switches between sections via the navigation tabs', async () => {
+      getProjectMock.mockResolvedValue({
+        ...projectDetail,
+        description: 'Açıklama',
+      })
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+
+      // Overview is the default section.
+      expect(
+        await screen.findByRole('tabpanel', { name: 'Proje bilgileri' }),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('tab', { name: 'Üyeler' }))
+      expect(
+        screen.queryByRole('tabpanel', { name: 'Proje bilgileri' }),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('tabpanel', { name: 'Üyeler ve erişim' }),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('tab', { name: 'Genel Bakış' }))
+      expect(
+        screen.getByRole('tabpanel', { name: 'Proje bilgileri' }),
+      ).toBeInTheDocument()
+    })
+
+    it('exposes appearance and danger-zone entry points without inventing mutations', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+
+      await screen.findByRole('tab', { name: 'Genel Bakış' })
+      expect(screen.getByRole('tab', { name: 'Görünüm' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('tab', { name: 'Tehlikeli Bölge' }),
+      ).toBeInTheDocument()
+
+      // Appearance is presentational: a read-only note, no editable controls.
+      await user.click(screen.getByRole('tab', { name: 'Görünüm' }))
+      const appearancePanel = await screen.findByRole('tabpanel', {
+        name: 'Görünüm',
+      })
+      expect(within(appearancePanel).getByRole('note')).toBeInTheDocument()
+      expect(
+        within(appearancePanel).queryByRole('button'),
+      ).not.toBeInTheDocument()
+      expect(
+        within(appearancePanel).queryByRole('textbox'),
+      ).not.toBeInTheDocument()
+
+      // Danger zone is presentation only: no destructive control triggers an
+      // unsupported backend mutation.
+      await user.click(screen.getByRole('tab', { name: 'Tehlikeli Bölge' }))
+      const dangerPanel = await screen.findByRole('tabpanel', {
+        name: 'Tehlikeli Bölge',
+      })
+      expect(within(dangerPanel).getByText('Projeyi silme')).toBeInTheDocument()
+      expect(within(dangerPanel).getByRole('note')).toBeInTheDocument()
+      expect(
+        within(dangerPanel).queryByRole('button'),
+      ).not.toBeInTheDocument()
+    })
+
+    it('links the members section to the dedicated members page', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue([adminMember])
+      const user = userEvent.setup()
+      renderSettingsPage()
+      await openMembersTab(user)
+
+      const membersPanel = await screen.findByRole('tabpanel', {
+        name: 'Üyeler ve erişim',
+      })
+      const link = within(membersPanel).getByRole('link', {
+        name: 'Üyeleri görüntüle',
+      })
+      expect(link).toHaveAttribute('href', '/projects/MES/members')
+    })
+  })
+
   describe('role-aware controls', () => {
     it('shows management controls for a PROJECT_LEAD', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue([adminMember, memberMember])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -249,11 +470,17 @@ describe('ProjectSettingsPage', () => {
         currentUserRole: 'MEMBER',
       })
       listProjectMembersMock.mockResolvedValue([adminMember, memberMember])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       const memberList = await screen.findByRole('list', {
         name: 'Proje üyeleri',
       })
+      // A read-only notice explains the lack of management controls.
+      expect(
+        screen.getByText(/Üyelikler salt okunur. Üyeleri yalnızca proje liderleri/),
+      ).toBeInTheDocument()
 
       // The add form is not rendered for a read-only member.
       expect(
@@ -281,7 +508,9 @@ describe('ProjectSettingsPage', () => {
         currentUserRole: 'VIEWER',
       })
       listProjectMembersMock.mockResolvedValue([adminMember, memberMember])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       const memberList = await screen.findByRole('list', {
         name: 'Proje üyeleri',
@@ -315,6 +544,7 @@ describe('ProjectSettingsPage', () => {
       addProjectMemberMock.mockResolvedValue(memberMember)
       const user = userEvent.setup()
       const queryClient = renderSettingsPage()
+      await openMembersTab(user)
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
       await screen.findByText('Ada Lovelace')
@@ -357,6 +587,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -386,6 +617,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -410,6 +642,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -436,6 +669,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -466,6 +700,7 @@ describe('ProjectSettingsPage', () => {
       })
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -497,6 +732,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Ada Lovelace')
 
@@ -524,6 +760,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -550,6 +787,7 @@ describe('ProjectSettingsPage', () => {
       listProjectMembersMock.mockResolvedValue([adminMember, memberMember])
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -572,6 +810,7 @@ describe('ProjectSettingsPage', () => {
       removeProjectMemberMock.mockResolvedValue(undefined)
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -599,6 +838,7 @@ describe('ProjectSettingsPage', () => {
       listProjectMembersMock.mockResolvedValue([adminMember, memberMember])
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -623,6 +863,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('Grace Hopper')
 
@@ -661,6 +902,7 @@ describe('ProjectSettingsPage', () => {
       )
       const user = userEvent.setup()
       const queryClient = renderSettingsPage()
+      await openMembersTab(user)
       const refetchSpy = vi.spyOn(queryClient, 'refetchQueries')
 
       await screen.findByText('Grace Hopper')
@@ -716,7 +958,9 @@ describe('ProjectSettingsPage', () => {
       }
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue([xssMember])
+      const user = userEvent.setup()
       renderSettingsPage()
+      await openMembersTab(user)
 
       await screen.findByText('<script>window.__xss=2</script> Evil')
       expect(

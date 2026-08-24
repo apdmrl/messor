@@ -3,22 +3,67 @@
    ============================================================ */
 
 :root {
-  /* Brand palette */
-  --color-bg: #f6f2e8;
+  /* Warm workshop palette */
+  --color-bg: #f4efe4;
   --color-surface: #fffdf8;
+  --color-surface-raised: #ffffff;
+  --color-surface-tint: #f8f4eb;
   --color-ink: #1f2a24;
   --color-muted: #66736c;
+  --color-muted-strong: #48564f;
   --color-primary: #2f5d50;
   --color-primary-strong: #173c34;
   --color-accent: #d99a3d;
   --color-danger: #a33a32;
+  --color-success: #34745b;
+  --color-warning: #9a681f;
+  --color-border: #ddd6c9;
+  --color-border-strong: #c5bbaa;
+  --color-focus: #b9791e;
+
+  /* Semantic aliases used by feature surfaces */
+  --accent: var(--color-primary);
+  --accent-strong: var(--color-primary-strong);
+  --surface: var(--color-surface);
+  --surface-raised: var(--color-surface-raised);
+  --surface-tint: var(--color-surface-tint);
+  --border: var(--color-border);
+  --border-strong: var(--color-border-strong);
+  --text: var(--color-ink);
+  --text-muted: var(--color-muted);
+  --danger: var(--color-danger);
+  --success: var(--color-success);
+
+  /* Layout and interaction */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+  --radius-pill: 999px;
+  --shadow-soft: 0 8px 24px rgba(31, 42, 36, 0.08);
+  --shadow-overlay: 0 18px 50px rgba(31, 42, 36, 0.18);
+  --motion-fast: 140ms ease-out;
+  --motion-normal: 200ms ease-out;
+
+  /* Board viewport: the Kanban board is height-bounded so adding cards never
+     grows the page. Columns scroll vertically; the board scrolls horizontally. */
+  --board-min-block-size: 24rem;
+  --board-preferred-block-size: 62dvh;
+  --board-max-block-size: 44rem;
 
   /* Typography */
   --font-sans: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
     sans-serif;
+  --font-display: Georgia, 'Times New Roman', serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
 
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: 16px;
   line-height: 1.5;
   color: var(--color-ink);
@@ -28,6 +73,55 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+*:focus-visible {
+  outline: 2px solid rgb(var(--messor-signal-active));
+  outline-offset: 2px;
+  box-shadow: var(--messor-focus-ring);
+}
+
+button,
+input,
+select,
+textarea {
+  accent-color: var(--color-primary);
+}
+
+button:not(:disabled),
+a,
+select {
+  transition:
+    color var(--motion-fast),
+    background-color var(--motion-fast),
+    border-color var(--motion-fast),
+    box-shadow var(--motion-fast),
+    transform var(--motion-fast);
+}
+
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* ============================================================
+   Messor global tokens and reset
+   ============================================================ */
+
+/*
+ * Feature styles historically referenced several token dialects. Keep the
+ * aliases above as one migration seam so every screen now resolves to the
+ * same warm palette instead of silently falling back to blue/gray defaults.
+ */
 
 *,
 *::before,
@@ -44,7 +138,7 @@ body {
 body {
   min-width: 320px;
   min-height: 100dvh;
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   color: var(--color-ink);
   background: var(--color-bg);
 }
@@ -78,4 +172,122 @@ ul,
 ol {
   margin: 0;
   padding: 0;
+}
+
+/* ============================================================
+   Burrow Instrument semantic tokens (dark-first with light mapping)
+   Space-separated RGB channels; consume as rgb(var(--messor-*)).
+   ============================================================ */
+
+:root {
+  /* Surfaces */
+  --messor-canvas: 245 243 238;
+  --messor-surface-1: 255 255 255;
+  --messor-surface-2: 240 238 232;
+  --messor-surface-3: 229 225 216;
+  --messor-surface-inverse: 27 26 23;
+
+  /* Text */
+  --messor-text-primary: 27 26 23;
+  --messor-text-secondary: 76 73 66;
+  --messor-text-muted: 104 100 92;
+
+  /* Borders */
+  --messor-border-subtle: 214 209 199;
+  --messor-border-strong: 152 145 134;
+
+  /* Signals */
+  --messor-signal-active: 152 99 22;
+  --messor-signal-active-soft: 244 230 204;
+  --messor-signal-danger: 163 62 45;
+  --messor-signal-success: 85 112 68;
+  --messor-signal-info: 66 103 115;
+  --messor-signal-warning: 138 92 22;
+
+  /* Typography: Inter Variable or Geist Sans with system fallback */
+  --font-ui: 'Inter Variable', 'Inter', 'Geist Sans', system-ui, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Spacing — strict 8px scale (8, 16, 24, 32, 40, 48) */
+  --messor-space-1: 0.5rem;
+  --messor-space-2: 1rem;
+  --messor-space-3: 1.5rem;
+  --messor-space-4: 2rem;
+  --messor-space-5: 2.5rem;
+  --messor-space-6: 3rem;
+
+  /* Radius — controls 6px, cards 8px, overlays 10px */
+  --messor-radius-control: 0.375rem;
+  --messor-radius-card: 0.5rem;
+  --messor-radius-overlay: 0.625rem;
+
+  /* Focus ring — 2px amber with 2px offset */
+  --messor-focus-ring: 0 0 0 2px rgb(var(--messor-signal-active));
+
+  /* Motion — hover changes surface; panels 160ms; press 100ms */
+  --messor-motion-panel: 160ms ease-out;
+  --messor-motion-press: 100ms ease-out;
+
+  /* Shadows */
+  --messor-shadow-soft: 0 1px 2px rgb(21 21 19 / 0.06),
+    0 4px 12px rgb(21 21 19 / 0.08);
+  --messor-shadow-overlay: 0 8px 28px rgb(21 21 19 / 0.2);
+}
+
+[data-theme='dark'] {
+  --messor-canvas: 21 21 19;
+  --messor-surface-1: 29 28 24;
+  --messor-surface-2: 37 35 30;
+  --messor-surface-3: 48 45 38;
+  --messor-surface-inverse: 245 241 232;
+
+  --messor-text-primary: 245 241 232;
+  --messor-text-secondary: 197 191 178;
+  --messor-text-muted: 161 154 141;
+
+  --messor-border-subtle: 60 57 50;
+  --messor-border-strong: 98 91 78;
+
+  --messor-signal-active: 211 154 62;
+  --messor-signal-active-soft: 59 45 27;
+  --messor-signal-danger: 226 118 93;
+  --messor-signal-success: 143 162 126;
+  --messor-signal-info: 143 168 178;
+  --messor-signal-warning: 215 168 91;
+
+  --messor-shadow-soft: 0 1px 2px rgb(0 0 0 / 0.4),
+    0 4px 12px rgb(0 0 0 / 0.4);
+  --messor-shadow-overlay: 0 8px 28px rgb(0 0 0 / 0.55);
+}
+
+/* Tabular numerals for identifiers, counts, and dates */
+.bi-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   Dark-theme mapping for legacy --color-* tokens
+   Feature surfaces still consume the legacy palette; remap it to the
+   Burrow Instrument dark scheme so every currently rendered surface
+   is coherent under [data-theme="dark"]. Aliases (--accent, --surface,
+   --text, etc.) reference these vars and inherit the mapping.
+   ============================================================ */
+
+[data-theme='dark'] {
+  --color-bg: #151513;
+  --color-surface: #1d1c18;
+  --color-surface-raised: #25231e;
+  --color-surface-tint: #25231e;
+  --color-ink: #f5f1e8;
+  --color-muted: #a19a8d;
+  --color-muted-strong: #c5bfb2;
+  --color-primary: #d39a3e;
+  --color-primary-strong: #e8c07a;
+  --color-accent: #d39a3e;
+  --color-danger: #e2765d;
+  --color-success: #8fa27e;
+  --color-warning: #d7a85b;
+  --color-border: #3c3932;
+  --color-border-strong: #625b4e;
+  --color-focus: #d39a3e;
 }

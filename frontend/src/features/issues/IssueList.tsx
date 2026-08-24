@@ -20,7 +20,7 @@ export function IssueList({
   assigneeLabel,
 }: IssueListProps): ReactElement {
   return (
-    <ul className="issue-list" aria-label="İssue’lar">
+    <ul className="issue-list" aria-label="İşler">
       {issues.map((issue) => {
         const selected = issue.issueKey === selectedIssueKey
         return (

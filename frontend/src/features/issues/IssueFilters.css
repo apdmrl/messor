@@ -1,43 +1,214 @@
 .issue-filters {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ---- Compact toolbar ---- */
+.issue-filters__toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-end;
-  width: 100%;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.issue-filters__disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.issue-filters__disclosure:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.issue-filters__disclosure[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface-tint);
+}
+
+.issue-filters__disclosure:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.issue-filters__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--surface-raised);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* ---- Active-filter chips ---- */
+.issue-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.issue-filters__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding-left: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-tint);
+  color: var(--text);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.issue-filters__chip-label {
+  white-space: nowrap;
+}
+
+.issue-filters__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 40px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.issue-filters__chip-remove:hover:not(:disabled) {
+  color: var(--color-danger);
+}
+
+.issue-filters__chip-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ---- Sort + clear (right side of the toolbar) ---- */
+.issue-filters__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.issue-filters__sort {
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.issue-filters__clear {
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.issue-filters__clear:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.issue-filters__clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ---- Expanded filter panel ---- */
+.issue-filters__panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   box-sizing: border-box;
 }
 
 .issue-filters__field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-2);
   min-width: 0;
 }
 
 .issue-filters__label {
   font-size: 0.85rem;
-  color: var(--text-muted, #555);
+  color: var(--text-muted);
 }
 
 .issue-filters__select {
-  min-width: 0;
   min-height: 44px;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 8px;
-  background: var(--surface, #fff);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   font: inherit;
   box-sizing: border-box;
 }
 
-/* On narrow screens, let the fields wrap to full width so the panel never
-   overflows horizontally. */
-@media (max-width: 480px) {
-  .issue-filters__field {
-    width: 100%;
+/* Tablet: two-column panel. */
+@media (max-width: 1023px) {
+  .issue-filters__panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Mobile: single-column panel; toolbar keeps Filter + Sort on the first row
+   while chips wrap to the next. */
+@media (max-width: 767px) {
+  .issue-filters__tools {
+    margin-left: 0;
   }
 
-  .issue-filters__select {
-    width: 100%;
+  .issue-filters__sort {
+    flex: 1 1 auto;
   }
+
+  .issue-filters__panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Visually hidden label (kept for accessible sort naming). */
+.issue-filters__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

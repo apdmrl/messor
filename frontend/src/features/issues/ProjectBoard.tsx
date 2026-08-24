@@ -1,62 +1,39 @@
 import type { ReactElement } from 'react'
-import { useMemo, useRef } from 'react'
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  rectIntersection,
-  useSensor,
-  useSensors,
-  type DndContextProps,
-  type DragEndEvent,
-  type ScreenReaderInstructions,
-} from '@dnd-kit/core'
-import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
+import { useCallback, useState } from 'react'
 import type { WorkflowStatus } from '../projects/types'
 import {
+  WIP_LIMIT,
   buildColumns,
-  dragEndAnnouncement,
   normalizeWorkflowStatuses,
-  resolveDragEnd,
 } from './boardOrder'
 import { KanbanColumn } from './KanbanColumn'
+import type { MoveDirection } from './IssueCard'
 import type { Issue } from './types'
-
-/**
- * Controlled Turkish screen-reader instructions for a drag. Text is fully
- * authored client-side and never embeds raw/hostile server values.
- */
-const screenReaderInstructions: ScreenReaderInstructions = {
-  draggable: `
-    Sürüklenebilir bir kartı seçmek için boşluk tuşuna basın.
-    Sürüklerken ok tuşlarını kullanarak kartı hareket ettirin.
-    Yeni konumuna bırakmak için tekrar boşluk tuşuna basın.
-    Sürüklemeyi iptal etmek için escape tuşuna basın.
-  `,
-}
-
-/** Safe human label for a drag target id; never echoes hostile/raw text. */
-function dragTargetLabel(id: string): string {
-  if (id.startsWith('column-')) {
-    return 'bir sütun'
-  }
-  // Card ids are server-issued issue keys (project key + number), safe to read.
-  return id
-}
 
 interface ProjectBoardProps {
   workflowStatuses: WorkflowStatus[]
   issues: Issue[]
   selectedIssueKey: string | null
+  /** True when the current user may change issue status (PROJECT_LEAD/MEMBER). */
   canMove: boolean
+  /** True while any mutation is pending; disables every status trigger. */
   moveDisabled: boolean
+  /** The issueKey currently being moved, or null; drives pending text/aria-busy. */
+  movePendingKey: string | null
   selectionDisabled: boolean
   /** When true, archived issues are shown as read-only cards (never movable). */
   includeArchived: boolean
+  /** WIP threshold for the per-column overburdened warning. */
+  wipLimit?: number
+  /** When provided (authorized user), every column offers an add action that
+   * receives the destination status code so a created issue lands in that
+   * column's workflow status. */
+  onCreate?: (statusCode: string) => void
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
+  /** Move an issue; an omitted targetIndex appends to the destination. */
+  onStatusChange: (issueKey: string, targetStatusCode: string, targetIndex?: number) => boolean
 }
 
 export function ProjectBoard({
@@ -65,121 +42,159 @@ export function ProjectBoard({
   selectedIssueKey,
   canMove,
   moveDisabled,
+  movePendingKey,
   selectionDisabled,
   includeArchived,
+  wipLimit = WIP_LIMIT,
+  onCreate,
   statusLabel,
   assigneeLabel,
   onSelect,
-  onMove,
+  onStatusChange,
 }: ProjectBoardProps): ReactElement {
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  )
-
-  // One normalized, immutable status sequence drives column order, card
-  // previous/next movement controls, and cross-column keyboard math.
+  // One normalized, immutable status sequence drives column order and the
+  // per-card status disclosure options.
   const normalizedStatuses = normalizeWorkflowStatuses(workflowStatuses)
   const columns = buildColumns(normalizedStatuses, issues, includeArchived)
 
-  // Records whether the most recent drag end was accepted as a real move. It is
-  // written synchronously in handleDragEnd (which runs before the accessibility
-  // announcement on DragEnd) and read+cleared by the announcement, so an earlier
-  // drag result can never leak into a later announcement.
-  const dragEndOutcomeRef = useRef<'moved' | 'unchanged' | null>(null)
+  // The card currently grabbed by pointer drag or by keyboard Space.
+  const [grabbedKey, setGrabbedKey] = useState<string | null>(null)
+  // Keyboard move state: the grabbed key and the live insertion target.
+  const [kbMove, setKbMove] = useState<{
+    key: string
+    statusCode: string
+    index: number
+  } | null>(null)
 
-  // Controlled Turkish announcements. Derived from the same validated drag
-  // resolution used by handleDragEnd: success is announced only when a valid
-  // move was actually accepted for mutation.
-  const accessibility = useMemo<DndContextProps['accessibility']>(
-    () => ({
-      announcements: {
-        onDragStart(event) {
-          dragEndOutcomeRef.current = null
-          return `Sürüklenen kart ${String(event.active.id)}.`
-        },
-        onDragOver(event) {
-          return event.over
-            ? `Kart ${String(event.active.id)} üzerinde: ${dragTargetLabel(String(event.over.id))}.`
-            : `Kart ${String(event.active.id)} şu anda bir hedefin üzerinde değil.`
-        },
-        onDragEnd(event) {
-          const outcome = dragEndOutcomeRef.current
-          dragEndOutcomeRef.current = null
-          return dragEndAnnouncement(
-            String(event.active.id),
-            outcome === 'moved' ? 'moved' : 'unchanged',
-          )
-        },
-        onDragCancel(event) {
-          return `Kart ${String(event.active.id)} sürüklemesi iptal edildi.`
-        },
-      },
-      screenReaderInstructions,
-    }),
-    [],
+  const clearMove = useCallback((): void => {
+    setGrabbedKey(null)
+    setKbMove(null)
+  }, [])
+
+  const effectiveColumnLength = useCallback(
+    (statusCode: string): number => {
+      const column = columns.find((c) => c.statusCode === statusCode)
+      if (column === undefined) {
+        return 0
+      }
+      const draggedCard =
+        grabbedKey !== null
+          ? issues.find((i) => i.issueKey === grabbedKey)
+          : undefined
+      const sameStatus = draggedCard?.statusCode === statusCode
+      return sameStatus ? Math.max(0, column.issues.length - 1) : column.issues.length
+    },
+    [columns, issues, grabbedKey],
   )
 
-  const handleDragEnd = (event: DragEndEvent): void => {
-    const { active, over } = event
-    if (over === null) {
-      dragEndOutcomeRef.current = 'unchanged'
-      return
-    }
-    const draggedKey = String(active.id)
-    const overId = String(over.id)
-    const resolution = resolveDragEnd({ issues, activeId: draggedKey, overId })
-    // A null resolution is a true no-op (drop on itself) or an unknown target;
-    // never reach the API and never announce a successful move.
-    if (resolution === null) {
-      dragEndOutcomeRef.current = 'unchanged'
-      return
-    }
-    const accepted = onMove(
-      draggedKey,
-      resolution.targetStatusCode,
-      resolution.targetIndex,
-    )
-    dragEndOutcomeRef.current = accepted ? 'moved' : 'unchanged'
-  }
+  const onGrab = useCallback(
+    (issueKey: string): void => {
+      if (moveDisabled) {
+        return
+      }
+      const card = issues.find((i) => i.issueKey === issueKey)
+      if (card === undefined) {
+        return
+      }
+      const column = columns.find((c) => c.statusCode === card.statusCode)
+      const position = column?.issues.findIndex((i) => i.issueKey === issueKey) ?? 0
+      setGrabbedKey(issueKey)
+      setKbMove({
+        key: issueKey,
+        statusCode: card.statusCode,
+        index: Math.max(0, position),
+      })
+    },
+    [issues, columns, moveDisabled],
+  )
 
-  const handleDragCancel = (): void => {
-    // Escape during an active drag cancels here. No move is issued, so no API
-    // request is made and no successful-move announcement is triggered.
-  }
+  const onKbArrow = useCallback(
+    (direction: MoveDirection): void => {
+      setKbMove((prev) => {
+        if (prev === null) {
+          return prev
+        }
+        const statusIndex = normalizedStatuses.findIndex(
+          (s) => s.code === prev.statusCode,
+        )
+        let statusCode = prev.statusCode
+        if (direction === 'left') {
+          statusCode =
+            normalizedStatuses[Math.max(0, statusIndex - 1)]?.code ?? prev.statusCode
+        } else if (direction === 'right') {
+          statusCode =
+            normalizedStatuses[Math.min(normalizedStatuses.length - 1, statusIndex + 1)]
+              ?.code ?? prev.statusCode
+        }
+        const length = effectiveColumnLength(statusCode)
+        let index = prev.index
+        if (direction === 'up') {
+          index = Math.max(0, index - 1)
+        } else if (direction === 'down') {
+          index = Math.min(length, index + 1)
+        } else {
+          index = Math.min(index, length)
+        }
+        return { ...prev, statusCode, index }
+      })
+    },
+    [normalizedStatuses, effectiveColumnLength],
+  )
+
+  const onKbDrop = useCallback(
+    (issueKey: string): void => {
+      if (kbMove === null) {
+        return
+      }
+      onStatusChange(issueKey, kbMove.statusCode, kbMove.index)
+      clearMove()
+    },
+    [kbMove, onStatusChange, clearMove],
+  )
+
+  const handleDragStart = useCallback((issueKey: string): void => {
+    setGrabbedKey(issueKey)
+    setKbMove(null)
+  }, [])
+
+  const handleDropCard = useCallback(
+    (draggedKey: string, targetStatusCode: string, targetIndex: number): void => {
+      onStatusChange(draggedKey, targetStatusCode, targetIndex)
+      clearMove()
+    },
+    [onStatusChange, clearMove],
+  )
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={rectIntersection}
-      accessibility={accessibility}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <div className="kanban-board" role="region" aria-label="Kanban panosu">
-        {columns.map((column, index) => (
-          <KanbanColumn
-            key={column.statusCode}
-            status={{ code: column.statusCode, displayName: column.displayName, position: index }}
-            issues={column.issues}
-            workflowStatuses={normalizedStatuses}
-            columnIndex={index}
-            totalColumns={columns.length}
-            selectedIssueKey={selectedIssueKey}
-            canMove={canMove}
-            moveDisabled={moveDisabled}
-            selectionDisabled={selectionDisabled}
-            statusLabel={statusLabel}
-            assigneeLabel={assigneeLabel}
-            onSelect={onSelect}
-            onMove={onMove}
-          />
-        ))}
-      </div>
-    </DndContext>
+    <div className="kanban-board" role="region" aria-label="Kanban panosu">
+      {columns.map((column, index) => (
+        <KanbanColumn
+          key={column.statusCode}
+          status={{ code: column.statusCode, displayName: column.displayName, position: index }}
+          issues={column.issues}
+          workflowStatuses={normalizedStatuses}
+          selectedIssueKey={selectedIssueKey}
+          canMove={canMove}
+          moveDisabled={moveDisabled}
+          movePendingKey={movePendingKey}
+          selectionDisabled={selectionDisabled}
+          wipLimit={wipLimit}
+          onCreate={onCreate}
+          grabbedKey={grabbedKey}
+          kbTargetKey={kbMove?.statusCode ?? null}
+          statusLabel={statusLabel}
+          assigneeLabel={assigneeLabel}
+          onSelect={onSelect}
+          onStatusChange={onStatusChange}
+          onGrab={onGrab}
+          onKbArrow={onKbArrow}
+          onKbDrop={onKbDrop}
+          onKbCancel={clearMove}
+          onDragStart={handleDragStart}
+          onDragEnd={clearMove}
+          onDropCard={handleDropCard}
+        />
+      ))}
+    </div>
   )
 }

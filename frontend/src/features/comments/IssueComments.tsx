@@ -20,7 +20,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   VALIDATION_FAILED:
     'Girilen bilgiler doğrulanamadı. Lütfen kontrol edip tekrar deneyin.',
   COMMENT_NOT_FOUND: 'Bu yorum bulunamadı.',
-  ISSUE_NOT_FOUND: 'Bu issue bulunamadı.',
+  ISSUE_NOT_FOUND: 'Bu iş bulunamadı.',
   PROJECT_NOT_FOUND: 'Bu proje bulunamadı.',
   FORBIDDEN: 'Bu işlem için yetkiniz yok.',
   VERSION_CONFLICT:
@@ -69,6 +69,7 @@ export function IssueComments({
   const [editDraft, setEditDraft] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState<string | null>(null)
 
   const pendingMutationRef = useRef<CommentMutationKind | null>(null)
   const tryAcquireMutation = useCallback((kind: CommentMutationKind): boolean => {
@@ -119,9 +120,15 @@ export function IssueComments({
 
   const createMutation = useMutation({
     mutationFn: (body: string) => createComment(issueKey, { body }),
+    onMutate: () => {
+      // Clear before the write lands so a repeated success transitions the
+      // polite live region empty→message and is announced every time.
+      setAnnouncement(null)
+    },
     onSuccess: async () => {
       setCreateDraft('')
       setCreateError(null)
+      setAnnouncement('Yorum gönderildi.')
       await invalidateComments()
     },
     onError: (error: unknown) => {
@@ -294,6 +301,10 @@ export function IssueComments({
 
   return (
     <div className="issue-comments">
+      {/* Persistent polite live region announcing successful new comments. */}
+      <p className="issue-comments__live" aria-live="polite">
+        {announcement}
+      </p>
       {!commentsQuery.isLoading && commentsQuery.isError && (
         <p className="issue-comments__error" role="alert">
           {LIST_ERROR_FALLBACK}

@@ -103,7 +103,7 @@ export function IssueDetailsPanel({
           {confirmingArchive && (
             <span className="issue-details__confirm">
               <span className="issue-details__confirm-text">
-                Bu issue arşivlensin mi?
+                Bu iş arşivlensin mi?
               </span>
               <button
                 type="button"

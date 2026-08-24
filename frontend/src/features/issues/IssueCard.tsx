@@ -1,30 +1,10 @@
-import type { CSSProperties, ReactElement } from 'react'
+import type { DragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import type { WorkflowStatus } from '../projects/types'
 import { issueTypeLabel } from './issueLabels'
 import type { Issue } from './types'
 
-/** True when the user prefers reduced motion; disables drag transitions. */
-function usePrefersReducedMotion(): boolean {
-  const query = '(prefers-reduced-motion: reduce)'
-  const supportsMatchMedia =
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-  const [reduced, setReduced] = useState(
-    () => supportsMatchMedia && window.matchMedia(query).matches,
-  )
-  useEffect(() => {
-    if (!supportsMatchMedia) {
-      return
-    }
-    const mq = window.matchMedia(query)
-    const onChange = (event: MediaQueryListEvent): void => setReduced(event.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [supportsMatchMedia])
-  return reduced
-}
+export type MoveDirection = 'up' | 'down' | 'left' | 'right'
 
 interface IssueCardProps {
   issue: Issue
@@ -32,16 +12,23 @@ interface IssueCardProps {
   assigneeLabel: (id: string | null) => string
   selected: boolean
   selectionDisabled: boolean
+  /** True when the current user may change issue status (PROJECT_LEAD/MEMBER). */
   canMove: boolean
-  /** True while any mutation is pending; disables every movement control. */
+  /** True while any mutation is pending; disables every status trigger. */
   moveDisabled: boolean
+  /** The issueKey currently being moved, or null; drives pending text/aria-busy. */
+  movePendingKey: string | null
+  /** The card currently grabbed by pointer drag or keyboard, or null. */
+  grabbedKey: string | null
   workflowStatuses: WorkflowStatus[]
-  columnIndex: number
-  cardIndex: number
-  columnIssueCount: number
-  totalColumns: number
   onSelect: (issueKey: string) => void
-  onMove: (issueKey: string, targetStatusCode: string, targetIndex: number) => boolean
+  onStatusChange: (issueKey: string, targetStatusCode: string) => boolean
+  onGrab: (issueKey: string) => void
+  onKbArrow: (direction: MoveDirection) => void
+  onKbDrop: (issueKey: string) => void
+  onKbCancel: () => void
+  onDragStart: (issueKey: string, event: DragEvent<HTMLLIElement>) => void
+  onDragEnd: () => void
 }
 
 export function IssueCard({
@@ -52,79 +39,147 @@ export function IssueCard({
   selectionDisabled,
   canMove,
   moveDisabled,
+  movePendingKey,
+  grabbedKey,
   workflowStatuses,
-  columnIndex,
-  cardIndex,
-  columnIssueCount,
-  totalColumns,
   onSelect,
-  onMove,
+  onStatusChange,
+  onGrab,
+  onKbArrow,
+  onKbDrop,
+  onKbCancel,
+  onDragStart,
+  onDragEnd,
 }: IssueCardProps): ReactElement {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuToggleRef = useRef<HTMLButtonElement>(null)
-  const reducedMotion = usePrefersReducedMotion()
-  // Archived issues are read-only: never draggable and never movable. The
-  // sortable is disabled for them and the drag handle / move menu are hidden.
-  const readOnly = issue.archived
-  const movable = canMove && !readOnly
-  // The sortable listeners/attributes live on a dedicated drag handle so dnd-kit
-  // never swallows keyboard activation of the descendant select/menu buttons.
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({
-      id: issue.issueKey,
-      data: { type: 'issue', statusCode: issue.statusCode },
-      disabled: readOnly,
-    })
+  const [disclosureOpen, setDisclosureOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const selectRef = useRef<HTMLButtonElement>(null)
 
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: reducedMotion ? undefined : transition,
-    ...(isDragging ? { zIndex: 1, opacity: 0.85 } : {}),
-  }
+  // Archived issues are read-only; VIEWERs have no movement control. Both
+  // render a status chip only, never an actionable-looking trigger.
+  const movable = canMove && !issue.archived
+  const isMoving = movePendingKey === issue.issueKey
+  const isGrabbed = grabbedKey === issue.issueKey
 
   const accessibleName = `${issue.issueKey}, ${issue.title}, ${statusLabel(issue.statusCode)}`
-  const previousStatus = columnIndex > 0 ? workflowStatuses[columnIndex - 1] : null
-  const nextStatus =
-    columnIndex < totalColumns - 1 ? workflowStatuses[columnIndex + 1] : null
 
-  const triggerMenuMove = (): void => {
-    setMenuOpen(false)
-  }
-
+  // A pending mutation closes any open disclosure so no stale options linger.
   useEffect(() => {
-    if (!menuOpen) {
+    if (moveDisabled) {
+      setDisclosureOpen(false)
+    }
+  }, [moveDisabled])
+
+  // Escape closes the disclosure and returns focus to the trigger; clicking
+  // outside the card closes it without moving.
+  useEffect(() => {
+    if (!disclosureOpen) {
       return
     }
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        setMenuOpen(false)
-        // Return focus to the toggle rather than leaving it on the now-unmounted
-        // menu action.
-        menuToggleRef.current?.focus()
+        setDisclosureOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target as Node | null
+      const card = triggerRef.current?.closest('.kanban-card')
+      if (card !== null && card !== undefined && !card.contains(target)) {
+        setDisclosureOpen(false)
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [menuOpen])
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [disclosureOpen])
+
+  // The card is a move surface: Space grabs (or drops when already grabbed),
+  // arrows steer the insertion target, Escape cancels. Movement keys act only
+  // while the card's select button is focused, so disclosure controls keep
+  // their own behavior.
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (!movable || moveDisabled || disclosureOpen) {
+      return
+    }
+    if (event.target !== selectRef.current) {
+      return
+    }
+    if (isGrabbed) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbDrop(issue.issueKey)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbCancel()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbArrow('left')
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbArrow('right')
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbArrow('up')
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        event.stopPropagation()
+        onKbArrow('down')
+      }
+    } else if (event.key === ' ') {
+      event.preventDefault()
+      event.stopPropagation()
+      onGrab(issue.issueKey)
+    }
+  }
+
+  const handleDragStart = (event: DragEvent<HTMLLIElement>): void => {
+    if (!movable || moveDisabled) {
+      event.preventDefault()
+      return
+    }
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', issue.issueKey)
+    }
+    onDragStart(issue.issueKey, event)
+  }
+
+  const stop = (event: { stopPropagation: () => void }): void => {
+    event.stopPropagation()
+  }
 
   return (
     <li
-      className="kanban-card"
-      style={style}
-      ref={setNodeRef}
-      data-dragging={isDragging ? 'true' : 'false'}
+      className={isMoving ? 'kanban-card kanban-card--dragging' : 'kanban-card'}
+      aria-busy={isMoving ? true : undefined}
+      aria-grabbed={isGrabbed || undefined}
+      draggable={movable}
+      data-issue-key={issue.issueKey}
+      onClick={() => onSelect(issue.issueKey)}
+      onDragStart={handleDragStart}
+      onDragEnd={onDragEnd}
     >
       <div className="kanban-card__main">
         <button
           type="button"
           id={`kanban-card-${issue.issueKey}`}
           className="kanban-card__select"
+          ref={selectRef}
           aria-label={accessibleName}
           aria-pressed={selected}
           aria-current={selected}
           aria-disabled={selectionDisabled}
           disabled={selectionDisabled}
-          onClick={() => onSelect(issue.issueKey)}
+          onKeyDown={handleKeyDown}
         >
           <span className="kanban-card__key">{issue.issueKey}</span>
           <span className="kanban-card__title">{issue.title}</span>
@@ -134,84 +189,61 @@ export function IssueCard({
           <span className="kanban-card__assignee">{assigneeLabel(issue.assigneeId)}</span>
         </button>
 
-        {movable && !moveDisabled && (
-          <button
-            type="button"
-            className="kanban-card__drag-handle"
-            aria-label={`${issue.issueKey} sürükle`}
-            {...attributes}
-            {...listeners}
-          >
-            Sürükle
-          </button>
-        )}
+        <div className="kanban-card__status">
+          <span className="kanban-card__status-chip" aria-hidden="true">
+            {statusLabel(issue.statusCode)}
+          </span>
+          {movable && (
+            <button
+              type="button"
+              ref={triggerRef}
+              id={`kanban-card-status-${issue.issueKey}`}
+              className="kanban-card__status-toggle"
+              aria-label={`${issue.issueKey} için durumu değiştir`}
+              aria-expanded={disclosureOpen}
+              aria-controls={`kanban-card-status-pop-${issue.issueKey}`}
+              disabled={moveDisabled}
+              onClick={(event) => {
+                event.stopPropagation()
+                setDisclosureOpen((open) => !open)
+              }}
+            >
+              {isMoving ? 'Taşınıyor…' : 'Durumu değiştir'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {movable && (
-        <div className="kanban-card__menu">
-          <button
-            type="button"
-            ref={menuToggleRef}
-            className="kanban-card__menu-toggle"
-            aria-label={`${issue.issueKey} için taşıma menüsü`}
-            aria-expanded={menuOpen}
-            disabled={moveDisabled}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            Taşı
-          </button>
-          {menuOpen && (
-            <div className="kanban-card__menu-pop" role="group" aria-label="Taşıma seçenekleri">
+      {movable && disclosureOpen && !moveDisabled && (
+        <div
+          id={`kanban-card-status-pop-${issue.issueKey}`}
+          className="kanban-card__status-pop"
+          role="group"
+          aria-label={`${issue.issueKey} için durum seçenekleri`}
+          onClick={stop}
+        >
+          {workflowStatuses.map((status) => {
+            const isCurrent = status.code === issue.statusCode
+            return (
               <button
+                key={status.code}
                 type="button"
-                className="kanban-card__menu-action"
-                disabled={moveDisabled || previousStatus === null}
-                onClick={() => {
-                  if (previousStatus) {
-                    onMove(issue.issueKey, previousStatus.code, Number.MAX_SAFE_INTEGER)
+                className="kanban-card__status-action"
+                aria-current={isCurrent ? 'true' : undefined}
+                disabled={isCurrent || moveDisabled}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  if (isCurrent) {
+                    return
                   }
-                  triggerMenuMove()
+                  onStatusChange(issue.issueKey, status.code)
+                  setDisclosureOpen(false)
                 }}
               >
-                Önceki sütuna taşı
+                {status.displayName} durumuna taşı
               </button>
-              <button
-                type="button"
-                className="kanban-card__menu-action"
-                disabled={moveDisabled || nextStatus === null}
-                onClick={() => {
-                  if (nextStatus) {
-                    onMove(issue.issueKey, nextStatus.code, Number.MAX_SAFE_INTEGER)
-                  }
-                  triggerMenuMove()
-                }}
-              >
-                Sonraki sütuna taşı
-              </button>
-              <button
-                type="button"
-                className="kanban-card__menu-action"
-                disabled={moveDisabled || cardIndex === 0}
-                onClick={() => {
-                  onMove(issue.issueKey, issue.statusCode, Math.max(0, cardIndex - 1))
-                  triggerMenuMove()
-                }}
-              >
-                Yukarı taşı
-              </button>
-              <button
-                type="button"
-                className="kanban-card__menu-action"
-                disabled={moveDisabled || cardIndex >= columnIssueCount - 1}
-                onClick={() => {
-                  onMove(issue.issueKey, issue.statusCode, cardIndex + 1)
-                  triggerMenuMove()
-                }}
-              >
-                Aşağı taşı
-              </button>
-            </div>
-          )}
+            )
+          })}
         </div>
       )}
     </li>

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ReactElement } from 'react'
+import { useSession } from '../../app/session'
 import { CreateProjectForm } from './CreateProjectForm'
 import { createProject, listProjects } from './projectsApi'
 import type { ProjectSummary } from './types'
@@ -24,6 +25,13 @@ function roleLabel(role: ProjectSummary['currentUserRole']): string {
 export function ProjectsPage(): ReactElement {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { session } = useSession()
+
+  // Only a global ORG_ADMIN may create projects; the backend enforces the
+  // same rule on POST /api/projects. Hide the create surface (and render a
+  // tailored empty state) for everyone else.
+  const isOrgAdmin =
+    session.status === 'authenticated' && session.user.role === 'ORG_ADMIN'
 
   const projectsQuery = useQuery({
     queryKey: PROJECTS_QUERY_KEY,
@@ -39,7 +47,9 @@ export function ProjectsPage(): ReactElement {
   })
 
   return (
-    <div className="projects-page">
+    <div
+      className={`projects-page${isOrgAdmin ? '' : ' projects-page--readonly'}`}
+    >
       <section className="projects-list" aria-labelledby="projects-heading">
         <h2 id="projects-heading" className="projects-list__heading">
           Projeler
@@ -58,11 +68,20 @@ export function ProjectsPage(): ReactElement {
         )}
 
         {projectsQuery.isSuccess &&
-          projectsQuery.data.items.length === 0 && (
+          projectsQuery.data.items.length === 0 &&
+          (isOrgAdmin ? (
             <p className="projects-list__empty">
               Henüz proje yok. İlk projeni oluştur.
             </p>
-          )}
+          ) : (
+            <div className="projects-empty" role="note">
+              <p className="projects-empty__title">Henüz proje yok</p>
+              <p className="projects-empty__text">
+                Sana atanmış bir proje bulunmuyor. Yeni projeler yalnızca
+                organizasyon yöneticileri tarafından oluşturulur.
+              </p>
+            </div>
+          ))}
 
         {projectsQuery.isSuccess && projectsQuery.data.items.length > 0 && (
           <ul className="projects-list__items">
@@ -84,27 +103,37 @@ export function ProjectsPage(): ReactElement {
                     {roleLabel(project.currentUserRole)}
                   </span>
                 </Link>
-                <Link
-                  className="project-card__settings"
-                  to={`/projects/${project.key}/settings`}
-                >
-                  Ayarlar
-                </Link>
+                <span className="project-card__actions">
+                  <Link
+                    className="project-card__action"
+                    to={`/projects/${project.key}/issues`}
+                  >
+                    İşler
+                  </Link>
+                  <Link
+                    className="project-card__settings"
+                    to={`/projects/${project.key}/settings`}
+                  >
+                    Ayarlar
+                  </Link>
+                </span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="projects-create" aria-labelledby="create-heading">
-        <h2 id="create-heading" className="projects-create__heading">
-          Yeni proje
-        </h2>
-        <CreateProjectForm
-          onSubmit={createMutation.mutateAsync}
-          pending={createMutation.isPending}
-        />
-      </section>
+      {isOrgAdmin && (
+        <section className="projects-create" aria-labelledby="create-heading">
+          <h2 id="create-heading" className="projects-create__heading">
+            Yeni proje
+          </h2>
+          <CreateProjectForm
+            onSubmit={createMutation.mutateAsync}
+            pending={createMutation.isPending}
+          />
+        </section>
+      )}
     </div>
   )
 }

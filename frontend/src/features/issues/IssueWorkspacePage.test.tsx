@@ -261,7 +261,7 @@ describe('IssueWorkspacePage', () => {
 
       expect(await screen.findByRole('status')).toBeInTheDocument()
       expect(
-        screen.getByText('İssue’lar yükleniyor…'),
+        screen.getByText('İşler yükleniyor…'),
       ).toBeInTheDocument()
     })
 
@@ -275,19 +275,29 @@ describe('IssueWorkspacePage', () => {
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(
-        'İssue’lar yüklenemedi. Lütfen tekrar deneyin.',
+        'İşler yüklenemedi. Lütfen tekrar deneyin.',
       )
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('internal issue list secret')
     })
 
-    it('shows an empty state when there are no active issues', async () => {
+    it('renders workflow columns with add actions for an empty unfiltered project', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue(members)
       listIssuesMock.mockResolvedValue(emptyPage)
       renderWorkspace()
 
-      expect(await screen.findByText('Henüz issue yok.')).toBeInTheDocument()
+      const board = await screen.findByRole('region', { name: 'Kanban panosu' })
+      expect(
+        within(board).getByRole('region', { name: 'Yapılacak sütunu, 0 kart' }),
+      ).toBeInTheDocument()
+      expect(
+        within(board).getByRole('region', { name: 'Bitti sütunu, 0 kart' }),
+      ).toBeInTheDocument()
+      // The per-column add action is reachable for an authorized user.
+      expect(
+        within(board).getAllByRole('button', { name: 'Kart ekle' }),
+      ).toHaveLength(3)
     })
 
     it('renders populated board columns with key, title, status and assignee', async () => {
@@ -322,7 +332,7 @@ describe('IssueWorkspacePage', () => {
       ).toBeInTheDocument()
     })
 
-    it('shows the project and settings links and never resurrects the removed "Board’a dön" link', async () => {
+    it('shows the project and settings links and never resurrects the removed "Panoya dön" link', async () => {
       getProjectMock.mockResolvedValue(projectDetail)
       listProjectMembersMock.mockResolvedValue(members)
       listIssuesMock.mockResolvedValue(pageWithIssues)
@@ -391,7 +401,7 @@ describe('IssueWorkspacePage', () => {
       renderWorkspace()
 
       expect(
-        await screen.findByRole('button', { name: 'Yeni issue' }),
+        await screen.findByRole('button', { name: 'Yeni iş' }),
       ).toBeInTheDocument()
       await selectIssue('MES-1')
       expect(
@@ -414,7 +424,7 @@ describe('IssueWorkspacePage', () => {
       renderWorkspace()
 
       expect(
-        await screen.findByRole('button', { name: 'Yeni issue' }),
+        await screen.findByRole('button', { name: 'Yeni iş' }),
       ).toBeInTheDocument()
       await selectIssue('MES-1')
       expect(
@@ -435,7 +445,7 @@ describe('IssueWorkspacePage', () => {
 
       await screen.findByText('First task')
       expect(
-        screen.queryByRole('button', { name: 'Yeni issue' }),
+        screen.queryByRole('button', { name: 'Yeni iş' }),
       ).not.toBeInTheDocument()
 
       await selectIssue('MES-1')
@@ -460,7 +470,7 @@ describe('IssueWorkspacePage', () => {
       const user = userEvent.setup()
       renderWorkspace()
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
 
       expect(
@@ -485,7 +495,7 @@ describe('IssueWorkspacePage', () => {
       const queryClient = renderWorkspace()
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.type(screen.getByLabelText('Başlık'), 'Third task')
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
 
@@ -524,7 +534,7 @@ describe('IssueWorkspacePage', () => {
       const user = userEvent.setup()
       renderWorkspace()
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.type(screen.getByLabelText('Başlık'), 'Third task')
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
 
@@ -550,7 +560,7 @@ describe('IssueWorkspacePage', () => {
       const user = userEvent.setup()
       renderWorkspace()
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.type(screen.getByLabelText('Başlık'), 'Third task')
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
 
@@ -560,6 +570,168 @@ describe('IssueWorkspacePage', () => {
       )
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('backend validation secret')
+    })
+    it('shows the destination status when creating from a populated column footer', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      renderWorkspace()
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      const inProgress = screen.getByRole('region', {
+        name: 'Sürüyor sütunu, 1 kart',
+      })
+      await userEvent.click(
+        within(inProgress).getByRole('button', { name: 'İş ekle' }),
+      )
+      expect(
+        await screen.findByText('Yeni iş şu duruma eklenecek: Sürüyor'),
+      ).toBeInTheDocument()
+    })
+
+    it('every populated board column exposes a reachable add action', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      renderWorkspace()
+
+      const board = await screen.findByRole('region', { name: 'Kanban panosu' })
+      // TO_DO and IN_PROGRESS hold issues so they offer the footer add action.
+      expect(
+        within(board).getAllByRole('button', { name: 'İş ekle' }),
+      ).toHaveLength(2)
+      // The empty DONE column still offers its inline add action.
+      expect(
+        within(board).getAllByRole('button', { name: 'Kart ekle' }),
+      ).toHaveLength(1)
+    })
+
+    it('moves an issue created from a column into that column status', async () => {
+      const newIssue = makeIssue({
+        issueKey: 'MES-3',
+        number: 3,
+        title: 'Third task',
+      })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      moveIssueMock.mockResolvedValue({
+        ...newIssue,
+        statusCode: 'IN_PROGRESS',
+        version: 1,
+      })
+      getIssueMock.mockResolvedValue({
+        ...newIssue,
+        statusCode: 'IN_PROGRESS',
+        version: 1,
+      })
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      await user.click(
+        within(
+          screen.getByRole('region', { name: 'Sürüyor sütunu, 1 kart' }),
+        ).getByRole('button', { name: 'İş ekle' }),
+      )
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(createIssueMock).toHaveBeenCalledWith('MES', {
+          type: 'TASK',
+          title: 'Third task',
+          description: null,
+          assigneeId: null,
+        })
+      })
+      // The created issue is then moved to the destination column status.
+      await waitFor(() => {
+        expect(moveIssueMock).toHaveBeenCalledWith('MES-3', {
+          targetStatusCode: 'IN_PROGRESS',
+          beforeIssueKey: null,
+          afterIssueKey: null,
+          expectedVersion: 0,
+        })
+      })
+      await waitFor(() => {
+        expect(getIssueMock).toHaveBeenCalledWith('MES-3')
+      })
+    })
+
+    it('does not move when the header create targets the server default status', async () => {
+      const newIssue = makeIssue({ issueKey: 'MES-3', number: 3 })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      getIssueMock.mockResolvedValue(newIssue)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(createIssueMock).toHaveBeenCalledWith('MES', {
+          type: 'TASK',
+          title: 'Third task',
+          description: null,
+          assigneeId: null,
+        })
+      })
+      await waitFor(() => {
+        expect(moveIssueMock).not.toHaveBeenCalled()
+      })
+    })
+
+    it('reveals the created issue with a clear banner when the follow-up move fails', async () => {
+      const newIssue = makeIssue({ issueKey: 'MES-3', number: 3 })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      moveIssueMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'backend move secret'),
+      )
+      getIssueMock.mockResolvedValue(newIssue)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      const queryClient = renderWorkspace()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      await user.click(
+        within(
+          screen.getByRole('region', { name: 'Sürüyor sütunu, 1 kart' }),
+        ).getByRole('button', { name: 'İş ekle' }),
+      )
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(moveIssueMock).toHaveBeenCalled()
+      })
+      expect(
+        await screen.findByText(
+          'İş oluşturuldu ancak seçilen sütuna taşınamadı. İş varsayılan durumunda görünüyor.',
+        ),
+      ).toBeInTheDocument()
+      // The default-status issue must be invalidated so it never disappears
+      // from the board/list cache after the failed status move.
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ['issues', 'MES'],
+        })
+      })
+      // The created issue is still revealed so it can be moved manually.
+      await waitFor(() => {
+        expect(getIssueMock).toHaveBeenCalledWith('MES-3')
+      })
     })
   })
 
@@ -752,7 +924,7 @@ describe('IssueWorkspacePage', () => {
       await user.click(screen.getByRole('button', { name: 'Güncelle' }))
 
       const banner = await screen.findByText(
-        'Bu issue arşivlendi; güncelleme yapılamıyor.',
+        'Bu iş arşivlendi; güncelleme yapılamıyor.',
       )
       expect(banner).toBeInTheDocument()
       await waitFor(() => {
@@ -902,7 +1074,7 @@ describe('IssueWorkspacePage', () => {
       )
 
       const banner = await screen.findByText(
-        'Bu issue arşivlendi; güncelleme yapılamıyor.',
+        'Bu iş arşivlendi; güncelleme yapılamıyor.',
       )
       expect(banner).toBeInTheDocument()
       await waitFor(() => {
@@ -918,7 +1090,7 @@ describe('IssueWorkspacePage', () => {
       })
       // focus returns to a stable living target: the list heading
       const listHeading = screen.getByRole('heading', {
-        name: 'İssue’lar',
+        name: 'İşler',
       })
       await waitFor(() => {
         expect(listHeading).toHaveFocus()
@@ -1051,7 +1223,7 @@ describe('IssueWorkspacePage', () => {
 
       // while the update is pending, create is disabled and cannot open
       const createButton = await screen.findByRole('button', {
-        name: 'Yeni issue',
+        name: 'Yeni iş',
       })
       await waitFor(() => {
         expect(createButton).toBeDisabled()
@@ -1101,7 +1273,7 @@ describe('IssueWorkspacePage', () => {
 
       // while the archive is pending, create is disabled and cannot dismiss confirmation
       const createButton = await screen.findByRole('button', {
-        name: 'Yeni issue',
+        name: 'Yeni iş',
       })
       expect(createButton).toBeDisabled()
       expect(createButton).toHaveAttribute('aria-disabled', 'true')
@@ -1140,7 +1312,7 @@ describe('IssueWorkspacePage', () => {
       await selectIssue('MES-1')
 
       // open the create form (selection remains) and submit
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.type(screen.getByLabelText('Başlık'), 'Third task')
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
 
@@ -1192,7 +1364,7 @@ describe('IssueWorkspacePage', () => {
       renderWorkspace()
 
       const createButton = await screen.findByRole('button', {
-        name: 'Yeni issue',
+        name: 'Yeni iş',
       })
       await user.click(createButton)
       await screen.findByLabelText('Başlık')
@@ -1214,7 +1386,7 @@ describe('IssueWorkspacePage', () => {
       const user = userEvent.setup()
       renderWorkspace()
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
 
       await waitFor(() => {
         expect(screen.getByLabelText('Başlık')).toHaveFocus()
@@ -1272,9 +1444,9 @@ describe('IssueWorkspacePage', () => {
         'Proje bilgileri yüklenemedi. Lütfen tekrar deneyin.',
       )
       expect(
-        screen.queryByRole('button', { name: 'Yeni issue' }),
+        screen.queryByRole('button', { name: 'Yeni iş' }),
       ).not.toBeInTheDocument()
-      expect(screen.queryByText('İssue yönetimi')).not.toBeInTheDocument()
+      expect(screen.queryByText('İş yönetimi')).not.toBeInTheDocument()
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('internal project secret')
     })
@@ -1333,7 +1505,7 @@ describe('IssueWorkspacePage', () => {
       await selectIssue('MES-1')
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(
-        'Issue detayı yüklenemedi. Lütfen tekrar deneyin.',
+        'İş detayı yüklenemedi. Lütfen tekrar deneyin.',
       )
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('internal detail secret')
@@ -1870,10 +2042,10 @@ describe('IssueWorkspacePage', () => {
   })
 
   describe('move lifecycle', () => {
-    async function openMoveMenu(issueKey: string): Promise<ReturnType<typeof userEvent.setup>> {
+    async function openStatusDisclosure(issueKey: string): Promise<ReturnType<typeof userEvent.setup>> {
       const user = userEvent.setup()
       const toggle = await screen.findByRole('button', {
-        name: `${issueKey} için taşıma menüsü`,
+        name: `${issueKey} için durumu değiştir`,
       })
       await user.click(toggle)
       return user
@@ -1900,14 +2072,14 @@ describe('IssueWorkspacePage', () => {
       })
       renderWorkspace()
 
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       await waitFor(() => {
         expect(moveIssueMock).toHaveBeenCalledWith('MES-1', {
           targetStatusCode: 'IN_PROGRESS',
           beforeIssueKey: null,
-          afterIssueKey: 'MES-2',
+          afterIssueKey: null,
           expectedVersion: 0,
         })
       })
@@ -1924,12 +2096,12 @@ describe('IssueWorkspacePage', () => {
 
       resolveMove(movedIssue)
       await waitFor(() => {
-        expect(screen.getByText('MES-1 taşındı.')).toBeInTheDocument()
+        expect(screen.getByText('MES-1, Sürüyor durumuna taşındı.')).toBeInTheDocument()
       })
-      // focus returns to the moved card
+      // focus returns to the moved card's status trigger in its destination
       await waitFor(() => {
         expect(
-          screen.getByRole('button', { name: 'MES-1, First task, Sürüyor' }),
+          screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }),
         ).toHaveFocus()
       })
     })
@@ -1955,13 +2127,13 @@ describe('IssueWorkspacePage', () => {
       await user.click(screen.getByRole('button', { name: /^MES-1,/ }))
       await screen.findByRole('button', { name: 'Düzenle' })
 
-      const menuUser = await openMoveMenu('MES-1')
-      await menuUser.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const menuUser = await openStatusDisclosure('MES-1')
+      await menuUser.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
       await waitFor(() => {
         expect(moveIssueMock).toHaveBeenCalledTimes(1)
       })
 
-      const createButton = screen.getByRole('button', { name: 'Yeni issue' })
+      const createButton = screen.getByRole('button', { name: 'Yeni iş' })
       expect(createButton).toBeDisabled()
       const secondCard = screen.getByRole('button', { name: /^MES-2,/ })
       expect(secondCard).toBeDisabled()
@@ -1969,7 +2141,7 @@ describe('IssueWorkspacePage', () => {
       expect(screen.getByRole('button', { name: 'Arşivle' })).toBeDisabled()
 
       // movement menus are disabled while pending
-      const toggles = screen.getAllByRole('button', { name: /taşıma menüsü/ })
+      const toggles = screen.getAllByRole('button', { name: /durumu değiştir/ })
       for (const toggle of toggles) {
         expect(toggle).toBeDisabled()
       }
@@ -1992,13 +2164,13 @@ describe('IssueWorkspacePage', () => {
           }),
       )
       renderWorkspace()
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
       await waitFor(() => {
         expect(moveIssueMock).toHaveBeenCalledTimes(1)
       })
       // all movement menus are disabled and cannot be reopened while pending
-      const toggles = screen.getAllByRole('button', { name: /taşıma menüsü/ })
+      const toggles = screen.getAllByRole('button', { name: /durumu değiştir/ })
       for (const toggle of toggles) {
         await user.click(toggle)
       }
@@ -2022,12 +2194,12 @@ describe('IssueWorkspacePage', () => {
       const user = userEvent.setup()
       renderWorkspace()
 
-      await user.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
       await user.type(screen.getByLabelText('Başlık'), 'Third task')
       await user.click(screen.getByRole('button', { name: 'Oluştur' }))
       await screen.findByRole('button', { name: 'Oluşturuluyor…' })
 
-      const toggles = screen.getAllByRole('button', { name: /taşıma menüsü/ })
+      const toggles = screen.getAllByRole('button', { name: /durumu değiştir/ })
       for (const toggle of toggles) {
         expect(toggle).toBeDisabled()
       }
@@ -2063,7 +2235,7 @@ describe('IssueWorkspacePage', () => {
       await waitFor(() => {
         expect(updateIssueMock).toHaveBeenCalledTimes(1)
       })
-      const toggles = screen.getAllByRole('button', { name: /taşıma menüsü/ })
+      const toggles = screen.getAllByRole('button', { name: /durumu değiştir/ })
       for (const toggle of toggles) {
         expect(toggle).toBeDisabled()
       }
@@ -2096,7 +2268,7 @@ describe('IssueWorkspacePage', () => {
         expect(archiveIssueMock).toHaveBeenCalledTimes(1)
       })
 
-      const toggles = screen.getAllByRole('button', { name: /taşıma menüsü/ })
+      const toggles = screen.getAllByRole('button', { name: /durumu değiştir/ })
       for (const toggle of toggles) {
         expect(toggle).toBeDisabled()
       }
@@ -2113,8 +2285,8 @@ describe('IssueWorkspacePage', () => {
         new ApiError(500, 'INTERNAL', 'backend move secret'),
       )
       renderWorkspace()
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent('İşlem tamamlanamadı. Lütfen tekrar deneyin.')
@@ -2136,8 +2308,8 @@ describe('IssueWorkspacePage', () => {
         new ApiError(409, 'VERSION_CONFLICT', 'backend move conflict secret'),
       )
       renderWorkspace()
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(/gözden geçirip gönder/)
@@ -2162,11 +2334,11 @@ describe('IssueWorkspacePage', () => {
         new ApiError(409, 'ISSUE_ARCHIVED', 'backend archived move secret'),
       )
       renderWorkspace()
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       const banner = await screen.findByText(
-        'Bu issue arşivlendi; güncelleme yapılamıyor.',
+        'Bu iş arşivlendi; güncelleme yapılamıyor.',
       )
       expect(banner).toBeInTheDocument()
       await waitFor(() => {
@@ -2185,8 +2357,8 @@ describe('IssueWorkspacePage', () => {
       const cancelSpy = vi.spyOn(queryClient, 'cancelQueries')
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       await waitFor(() => {
         expect(moveIssueMock).toHaveBeenCalled()
@@ -2232,8 +2404,8 @@ describe('IssueWorkspacePage', () => {
       moveIssueMock.mockResolvedValue({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
       renderWorkspace()
 
-      const user = await openMoveMenu('MES-1')
-      await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const user = await openStatusDisclosure('MES-1')
+      await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
       await waitFor(() => {
         expect(moveIssueMock).toHaveBeenCalledWith('MES-1', expect.anything())
       })
@@ -2248,21 +2420,23 @@ describe('IssueWorkspacePage', () => {
       await screen.findByRole('region', { name: 'Kanban panosu' })
       expect(screen.getByText('MES-1')).toBeInTheDocument()
       expect(
-        screen.queryByRole('button', { name: /taşıma menüsü/ }),
+        screen.queryByRole('button', { name: /durumu değiştir/ }),
       ).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /taşı$/ })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Yeni issue' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /durumuna taşı/ }),
+      ).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Yeni iş' })).not.toBeInTheDocument()
       expect(moveIssueMock).not.toHaveBeenCalled()
     })
 
     describe('synchronous mutation lock', () => {
       async function openCreateFormAndMoveMenu(): Promise<void> {
-        fireEvent.click(await screen.findByRole('button', { name: 'Yeni issue' }))
+        fireEvent.click(await screen.findByRole('button', { name: 'Yeni iş' }))
         fireEvent.change(screen.getByLabelText('Başlık'), {
           target: { value: 'Third task' },
         })
         fireEvent.click(
-          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+          screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }),
         )
       }
 
@@ -2275,7 +2449,7 @@ describe('IssueWorkspacePage', () => {
           target: { value: 'Renamed' },
         })
         fireEvent.click(
-          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+          screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }),
         )
       }
 
@@ -2285,7 +2459,7 @@ describe('IssueWorkspacePage', () => {
         await screen.findByRole('button', { name: 'Arşivle' })
         fireEvent.click(screen.getByRole('button', { name: 'Arşivle' }))
         fireEvent.click(
-          screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }),
+          screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }),
         )
       }
 
@@ -2311,7 +2485,7 @@ describe('IssueWorkspacePage', () => {
 
         act(() => {
           fireEvent.click(screen.getByRole('button', { name: 'Oluştur' }))
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         })
         await waitFor(() => expect(createIssueMock).toHaveBeenCalledTimes(1))
         expect(moveIssueMock).not.toHaveBeenCalled()
@@ -2333,7 +2507,7 @@ describe('IssueWorkspacePage', () => {
         await openCreateFormAndMoveMenu()
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
           fireEvent.click(screen.getByRole('button', { name: 'Oluştur' }))
         })
 
@@ -2356,7 +2530,7 @@ describe('IssueWorkspacePage', () => {
 
         act(() => {
           fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         })
 
         await waitFor(() => expect(updateIssueMock).toHaveBeenCalledTimes(1))
@@ -2377,7 +2551,7 @@ describe('IssueWorkspacePage', () => {
         await openEditFormAndMoveMenu()
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
           fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
         })
 
@@ -2400,7 +2574,7 @@ describe('IssueWorkspacePage', () => {
 
         act(() => {
           fireEvent.click(screen.getByRole('button', { name: 'Arşivlemeyi onayla' }))
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         })
 
         await waitFor(() => expect(archiveIssueMock).toHaveBeenCalledTimes(1))
@@ -2425,7 +2599,7 @@ describe('IssueWorkspacePage', () => {
         await openArchiveConfirmationAndMoveMenu()
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
           fireEvent.click(screen.getByRole('button', { name: 'Arşivlemeyi onayla' }))
         })
 
@@ -2439,12 +2613,12 @@ describe('IssueWorkspacePage', () => {
         moveIssueMock.mockResolvedValue({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
         const user = userEvent.setup()
         renderWorkspace()
-        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
-        await screen.findByText('MES-1 taşındı.')
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için durumu değiştir' }))
+        await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
+        await screen.findByText('MES-1, Sürüyor durumuna taşındı.')
 
         // lock is released: a create can now proceed
-        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.click(screen.getByRole('button', { name: 'Yeni iş' }))
         await user.type(screen.getByLabelText('Başlık'), 'Third task')
         createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
         await user.click(screen.getByRole('button', { name: 'Oluştur' }))
@@ -2460,11 +2634,11 @@ describe('IssueWorkspacePage', () => {
         )
         const user = userEvent.setup()
         renderWorkspace()
-        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için durumu değiştir' }))
+        await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         await screen.findByRole('alert')
 
-        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.click(screen.getByRole('button', { name: 'Yeni iş' }))
         await user.type(screen.getByLabelText('Başlık'), 'Third task')
         createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
         await user.click(screen.getByRole('button', { name: 'Oluştur' }))
@@ -2479,15 +2653,15 @@ describe('IssueWorkspacePage', () => {
         const queryClient = renderWorkspace()
         vi.spyOn(queryClient, 'cancelQueries').mockRejectedValue(new Error('boom'))
         const user = userEvent.setup()
-        await user.click(await screen.findByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-        await user.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        await user.click(await screen.findByRole('button', { name: 'MES-1 için durumu değiştir' }))
+        await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         // onMutate throws before the mutation function runs; the move never
         // reaches the API, and the lock must still be released.
         await waitFor(() => {
           expect(moveIssueMock).not.toHaveBeenCalled()
         })
 
-        await user.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        await user.click(screen.getByRole('button', { name: 'Yeni iş' }))
         await user.type(screen.getByLabelText('Başlık'), 'Third task')
         createIssueMock.mockResolvedValue(makeIssue({ issueKey: 'MES-3', number: 3 }))
         await user.click(screen.getByRole('button', { name: 'Oluştur' }))
@@ -2507,25 +2681,40 @@ describe('IssueWorkspacePage', () => {
         seedWorkspace()
         renderWorkspace()
         await screen.findByText('First task')
-        // Open two cards' move menus so two independently valid move actions
-        // are available in the same tick.
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-        fireEvent.click(screen.getByRole('button', { name: 'MES-2 için taşıma menüsü' }))
-        const nextButtons = screen.getAllByRole('button', { name: 'Sonraki sütuna taşı' })
-        expect(nextButtons.length).toBeGreaterThanOrEqual(2)
+        // Open two cards' status disclosures so two independently valid move
+        // actions are available in the same tick: MES-1 → Sürüyor and
+        // MES-2 → Yapılacak (each card's current status option is disabled).
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-2 için durumu değiştir' }))
+        const firstCard = screen
+          .getByRole('button', { name: 'MES-1, First task, Yapılacak' })
+          .closest('li') as HTMLElement
+        const secondCard = screen
+          .getByRole('button', { name: 'MES-2, Second bug, Sürüyor' })
+          .closest('li') as HTMLElement
+        const firstAction = within(firstCard).getByRole('button', {
+          name: 'Sürüyor durumuna taşı',
+        })
+        const secondAction = within(secondCard).getByRole('button', {
+          name: 'Yapılacak durumuna taşı',
+        })
+        expect(firstAction).toBeEnabled()
+        expect(secondAction).toBeEnabled()
 
         act(() => {
-          fireEvent.click(nextButtons[0])
-          fireEvent.click(nextButtons[1])
+          fireEvent.click(firstAction)
+          fireEvent.click(secondAction)
         })
         await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
+        expect(moveIssueMock).toHaveBeenCalledWith('MES-1', expect.anything())
 
         // Resolving the first move releases the lock so a later move can start.
         resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
-        await screen.findByText('MES-1 taşındı.')
+        await screen.findByText('MES-1, Sürüyor durumuna taşındı.')
 
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
-        fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+        // MES-1 now sits in Sürüyor, so a fresh move targets Bitti.
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Bitti durumuna taşı' }))
         await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(2))
       })
 
@@ -2540,20 +2729,20 @@ describe('IssueWorkspacePage', () => {
         seedWorkspace()
         renderWorkspace()
         await screen.findByText('First task')
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
-          fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Yeni iş' }))
         })
         await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
         // mutationLocked is the synchronous authority: the create form must not appear.
         expect(screen.queryByRole('button', { name: 'Oluştur' })).not.toBeInTheDocument()
 
         resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
-        await screen.findByText('MES-1 taşındı.')
+        await screen.findByText('MES-1, Sürüyor durumuna taşındı.')
         // After release the same action becomes available.
-        fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Yeni iş' }))
         expect(screen.getByRole('button', { name: 'Oluştur' })).toBeInTheDocument()
       })
 
@@ -2568,7 +2757,7 @@ describe('IssueWorkspacePage', () => {
         seedWorkspace()
         renderWorkspace()
         await screen.findByText('First task')
-        fireEvent.click(screen.getByRole('button', { name: 'Yeni issue' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Yeni iş' }))
         fireEvent.change(screen.getByLabelText('Başlık'), {
           target: { value: 'Third task' },
         })
@@ -2601,10 +2790,10 @@ describe('IssueWorkspacePage', () => {
         await screen.findByText('First task')
         fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
         await screen.findByRole('button', { name: 'Düzenle' })
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
           fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
         })
         await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
@@ -2625,10 +2814,10 @@ describe('IssueWorkspacePage', () => {
         await screen.findByText('First task')
         fireEvent.click(screen.getByRole('button', { name: /^MES-1,/ }))
         await screen.findByRole('button', { name: 'Arşivle' })
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
 
         act(() => {
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
           fireEvent.click(screen.getByRole('button', { name: 'Arşivle' }))
         })
         await waitFor(() => expect(moveIssueMock).toHaveBeenCalledTimes(1))
@@ -2655,11 +2844,11 @@ describe('IssueWorkspacePage', () => {
         fireEvent.change(screen.getByLabelText('Başlık'), {
           target: { value: 'Renamed' },
         })
-        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için taşıma menüsü' }))
+        fireEvent.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
 
         act(() => {
           fireEvent.click(screen.getByRole('button', { name: 'Güncelle' }))
-          fireEvent.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+          fireEvent.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
         })
         await waitFor(() => expect(updateIssueMock).toHaveBeenCalledTimes(1))
         expect(moveIssueMock).not.toHaveBeenCalled()
@@ -2686,11 +2875,11 @@ describe('IssueWorkspacePage', () => {
       await user.click(screen.getByRole('button', { name: /^MES-1,/ }))
       await screen.findByRole('heading', { name: 'MES-1', level: 2 })
 
-      const menuUser = await openMoveMenu('MES-1')
-      await menuUser.click(screen.getByRole('button', { name: 'Sonraki sütuna taşı' }))
+      const menuUser = await openStatusDisclosure('MES-1')
+      await menuUser.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
 
       await waitFor(() => {
-        expect(screen.getByText('MES-1 taşındı.')).toBeInTheDocument()
+        expect(screen.getByText('MES-1, Sürüyor durumuna taşındı.')).toBeInTheDocument()
       })
       expect(
         screen.getByRole('heading', { name: 'MES-1', level: 2 }),
@@ -2813,6 +3002,8 @@ describe('IssueWorkspacePage URL filters', () => {
     const user = userEvent.setup()
     renderWorkspace('/projects/MES/board?page=3')
 
+    // The full controls live behind the collapsed Filtreler disclosure.
+    await user.click(await screen.findByRole('button', { name: /Filtreler/ }))
     const type = await screen.findByLabelText('Tür')
     await user.selectOptions(type, 'BUG')
 
@@ -2824,7 +3015,7 @@ describe('IssueWorkspacePage URL filters', () => {
     })
   })
 
-  it('renders archived issues as read-only with no drag or move controls', async () => {
+  it('renders archived issues as read-only with no status-change control', async () => {
     listIssuesMock.mockResolvedValue({
       ...pageWithIssues,
       items: [makeIssue({ archived: true, statusCode: 'DONE' })],
@@ -2834,39 +3025,63 @@ describe('IssueWorkspacePage URL filters', () => {
     await screen.findByText('First task')
 
     // The archived card is still selectable (opens the read-only drawer) but
-    // offers no drag handle and no move menu.
+    // offers no status-change control.
     expect(
       screen.getByRole('button', { name: /^MES-1,/ }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /sürükle/i }),
-    ).toBeNull()
-    expect(
-      screen.queryByRole('button', { name: /taşıma menüsü/i }),
+      screen.queryByRole('button', { name: /durumuna taşı/ }),
     ).toBeNull()
   })
 
-  it('disables all movement controls when a type filter is active', async () => {
+  it('allows a status change on a type-filtered board', async () => {
     listIssuesMock.mockResolvedValue(pageWithIssues)
     renderWorkspace('/projects/MES/board?type=STORY')
 
     await screen.findByText('First task')
 
-    // A filtered board is not the complete active column, so no card may be
-    // dragged or moved.
-    expect(screen.queryByRole('button', { name: /sürükle/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /taşıma menüsü/i })).toBeNull()
+    // Status-only movement appends on the server and is independent of the
+    // completeness guard, so the status trigger stays available on a filtered
+    // board.
+    expect(
+      screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }),
+    ).toBeInTheDocument()
   })
 
-  it('does not call the move API from a filtered view', async () => {
+  it('moves a card out of a status-filtered view (optimistic removal)', async () => {
     listIssuesMock.mockResolvedValue(pageWithIssues)
+    let resolveMove: (value: Issue) => void = () => {}
+    moveIssueMock.mockImplementation(
+      () =>
+        new Promise<Issue>((resolve) => {
+          resolveMove = resolve
+        }),
+    )
+    const user = userEvent.setup()
     renderWorkspace('/projects/MES/board?status=TO_DO')
 
     await screen.findByText('First task')
-    // With movement controls absent, keyboard/pointer drags and the move menu
-    // cannot initiate a move.
-    expect(screen.queryByRole('button', { name: /sürükle/i })).toBeNull()
-    expect(moveIssueMock).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'MES-1 için durumu değiştir' }))
+    await user.click(screen.getByRole('button', { name: 'Sürüyor durumuna taşı' }))
+
+    // Status-only movement sends both neighbor keys null with the current
+    // expectedVersion, even on a filtered/paginated board.
+    await waitFor(() => {
+      expect(moveIssueMock).toHaveBeenCalledWith('MES-1', {
+        targetStatusCode: 'IN_PROGRESS',
+        beforeIssueKey: null,
+        afterIssueKey: null,
+        expectedVersion: 0,
+      })
+    })
+    // The card no longer matches the TO_DO filter, so it leaves the page
+    // optimistically while the move is still pending.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: /^MES-1,/ }),
+      ).not.toBeInTheDocument()
+    })
+    resolveMove({ ...issue1, statusCode: 'IN_PROGRESS', version: 1 })
   })
 })
 
