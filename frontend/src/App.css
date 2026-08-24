@@ -112,6 +112,11 @@
   color: rgb(var(--messor-text-secondary));
 }
 
+/* The recovery action uses the semantic active token as its foreground on a
+   neutral surface, which meets WCAG AA/AAA in both themes (dark 6.87:1, light
+   5.08:1 on the resting state; hover text-primary on signal-active-soft is
+   11.81:1 / 14.12:1). The previous surface-inverse-on-signal-active pairing
+   failed AA (dark 2.2:1, light 3.42:1). */
 .route-state__recovery {
   display: inline-flex;
   align-items: center;
@@ -119,15 +124,17 @@
   padding: 0.625rem 1.25rem;
   font: inherit;
   font-weight: 600;
-  color: rgb(var(--messor-surface-inverse));
-  background: rgb(var(--messor-signal-active));
-  border: 1px solid transparent;
+  color: rgb(var(--messor-signal-active));
+  background: rgb(var(--messor-surface-1));
+  border: 1px solid rgb(var(--messor-border-strong));
   border-radius: var(--messor-radius-card);
   text-decoration: none;
 }
 
 .route-state__recovery:hover {
+  color: rgb(var(--messor-text-primary));
   background: rgb(var(--messor-signal-active-soft));
+  border-color: rgb(var(--messor-signal-active));
 }
 
 .route-state__recovery:focus-visible {

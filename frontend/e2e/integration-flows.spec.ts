@@ -64,6 +64,46 @@ const EMPTY_PROJECTS = {
   totalItems: 0,
   totalPages: 0,
 }
+function makeIssue(key: string, number: number, statusCode: string, title: string) {
+  return {
+    id: `id-${key}`,
+    issueKey: key,
+    projectKey: 'MES',
+    number,
+    type: 'TASK',
+    title,
+    description: null,
+    statusCode,
+    reporterId: 'user-admin',
+    assigneeId: null,
+    rank: number * 1024,
+    archived: false,
+    version: 0,
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-01T00:00:00Z',
+  }
+}
+
+/** A board whose TO_DO column holds more cards than the WIP limit (5). */
+const OVERBURDENED_ISSUES = {
+  items: Array.from({ length: 6 }, (_, i) =>
+    makeIssue(`MES-${i + 1}`, i + 1, 'TO_DO', `Overloaded task ${i + 1}`),
+  ),
+  page: 0,
+  size: 100,
+  totalItems: 6,
+  totalPages: 1,
+}
+/**
+ * 200% browser zoom is a desktop accessibility scenario; at narrow widths the
+ * scaled layout is not meaningful (matches the board drag helper convention).
+ */
+function skipNarrowViewport(testInfo: import('@playwright/test').TestInfo): void {
+  test.skip(
+    (testInfo.project.use.viewport?.width ?? 1440) < 1024,
+    '200% zoom requires a wide viewport',
+  )
+}
 
 /** Authenticated bootstrap so protected routes render the shell. */
 async function mockAuthenticated(page: Page): Promise<void> {
@@ -242,4 +282,50 @@ test('an anonymous user is redirected to login from a protected route', async ({
   await page.goto('/my-work')
 
   await expect(page.getByRole('heading', { name: 'Oturum aç', level: 2 })).toBeVisible()
+})
+
+/* ============================================================
+   7. Overburdened board renders the WIP warning
+   ============================================================ */
+test('an overburdened column announces the WIP limit warning', async ({ page }) => {
+  await mockAuthenticated(page)
+  await mockWorkspace(page)
+  // Override the issues list so TO_DO exceeds the client WIP limit (5).
+  await page.route('**/api/projects/MES/issues**', (route) => {
+    route.fulfill({ status: 200, contentType: JSON_JSON, body: JSON.stringify(OVERBURDENED_ISSUES) })
+  })
+
+  await page.goto('/projects/MES/board')
+
+  // The warning is a polite status region tied to the overloaded column.
+  await expect(page.getByText(/WIP sınırı aşıldı: 6 kart \(sınır 5\)/)).toBeVisible()
+})
+
+/* ============================================================
+   8. 200% zoom keeps the recovery surface usable
+   ============================================================ */
+test('the not-found recovery surface stays usable at 200% zoom', async ({ page }, testInfo) => {
+  skipNarrowViewport(testInfo)
+  await mockAuthenticated(page)
+  await mockWorkspace(page)
+
+  await page.goto('/no/such/route')
+  await expect(page.getByRole('heading', { name: 'Sayfa bulunamadı' })).toBeVisible()
+
+  // Browser-scale to 200% (CSS zoom is Chromium-supported and reflows layout).
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = '2'
+  })
+
+  const recovery = page.getByRole('link', { name: 'Projelere dön' })
+  // The recovery surface remains visible and its target stays interactive.
+  await expect(recovery).toBeVisible()
+  const box = await recovery.boundingBox()
+  expect(box, 'recovery link must keep a hit target at 200% zoom').not.toBeNull()
+  if (box) {
+    expect(box.height, 'recovery link height at 200% zoom').toBeGreaterThanOrEqual(44)
+  }
+  // Clicking the recovery action still navigates to /projects.
+  await recovery.click()
+  await expect(page.getByRole('heading', { name: 'Projeler', level: 2 })).toBeVisible()
 })
