@@ -67,7 +67,7 @@ export function IssueFormPage({ mode }: IssueFormPageProps): ReactElement {
   const editReady =
     mode === 'edit'
       ? issueQuery.isSuccess &&
-        issue !== undefined &&
+        issue !== null &&
         issue.projectKey === key
       : true
 

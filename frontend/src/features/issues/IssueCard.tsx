@@ -1,4 +1,4 @@
-import type { DragEvent, KeyboardEvent, ReactElement } from 'react'
+import type { DragEvent, KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { WorkflowStatus } from '../projects/types'
 import { issueTypeLabel } from './issueLabels'
@@ -101,7 +101,7 @@ export function IssueCard({
   // arrows steer the insertion target, Escape cancels. Movement keys act only
   // while the card's select button is focused, so disclosure controls keep
   // their own behavior.
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
     if (!movable || moveDisabled || disclosureOpen) {
       return
     }

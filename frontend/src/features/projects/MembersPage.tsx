@@ -129,7 +129,7 @@ export function MembersPage(): ReactElement {
       )
       await refreshMembers()
     },
-    onError: async (error: unknown, input) => {
+    onError: async (error: unknown) => {
       setPendingRoleChanges({})
       if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') {
         await recoverFromVersionConflict()

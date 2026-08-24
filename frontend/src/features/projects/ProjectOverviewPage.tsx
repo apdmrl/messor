@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import { getProject } from './projectsApi'
-import { RestrictedPage } from '../../app/routeBoundaries'
 import type { ProjectRole } from './types'
 import './ProjectOverviewPage.css'
 
