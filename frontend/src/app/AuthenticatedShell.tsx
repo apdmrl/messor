@@ -6,6 +6,7 @@ import type {
   ReactElement,
 } from 'react'
 import { useSession } from './session'
+import { initialRailCollapsed } from './railLayout'
 import type { UserSummary } from '../features/auth/types'
 import { getProject } from '../features/projects/projectsApi'
 import './AuthenticatedShell.css'
@@ -22,9 +23,6 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
   return isActive ? 'bi-rail__link bi-rail__link--active' : 'bi-rail__link'
 }
 
-export function initialRailCollapsed(isCompactViewport: boolean): boolean {
-  return isCompactViewport
-}
 
 function IconSearch(): ReactElement {
   return (

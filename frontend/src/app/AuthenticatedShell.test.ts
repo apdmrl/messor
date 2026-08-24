@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { initialRailCollapsed } from './AuthenticatedShell'
+import { initialRailCollapsed } from './railLayout'
 
 describe('initialRailCollapsed', () => {
   it('collapses the rail on compact viewports', () => {
