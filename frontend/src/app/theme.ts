@@ -4,7 +4,6 @@ export type ThemeMode = 'dark' | 'light' | 'system'
 
 export type AppTheme = 'dark' | 'light'
 
-const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 
 /**
  * Resolves a requested theme mode to an applied theme. `'system'` follows the
@@ -23,44 +22,24 @@ export function resolveTheme(mode: ThemeMode, prefersDark: boolean): AppTheme {
 }
 
 /**
- * Whether the OS prefers a dark color scheme. Guarded because jsdom and
- * older browsers do not implement `matchMedia`; those environments default
- * to the light theme.
+ * The supplied product UI is authored in the light palette. Keep the runtime
+ * default deterministic so an operating-system dark preference cannot make the
+ * Figma light surfaces appear as a different product theme.
  */
-function systemPrefersDark(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(COLOR_SCHEME_QUERY).matches
-  )
+export function initialAppTheme(_prefersDark: boolean): AppTheme {
+  return 'light'
 }
 
 /**
- * Applies the current theme to the document root as `data-theme` and keeps it
- * in sync with OS color-scheme changes. The theme is resolved from the system
- * preference (no persistence) so it never touches session, auth, or CSRF
- * storage.
+ * Applies the fixed light product theme to the document root. Theme selection
+ * never reads or writes session, auth, or CSRF storage.
  */
 export function useTheme(): AppTheme {
-  const [theme, setTheme] = useState<AppTheme>(() =>
-    resolveTheme('system', systemPrefersDark()),
-  )
+  const [theme] = useState<AppTheme>(() => initialAppTheme(false))
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return
-    }
-    const media = window.matchMedia(COLOR_SCHEME_QUERY)
-    const onChange = (event: MediaQueryListEvent): void => {
-      setTheme(resolveTheme('system', event.matches))
-    }
-    media.addEventListener('change', onChange)
-    return () => media.removeEventListener('change', onChange)
-  }, [])
 
   return theme
 }
