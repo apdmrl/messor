@@ -47,6 +47,31 @@ const emptyPage: IssuePage = {
   totalItems: 0,
   totalPages: 0,
 }
+const listIssueFixture: Issue = {
+  id: 'i-1',
+  issueKey: 'MES-1',
+  projectKey: 'MES',
+  number: 1,
+  type: 'TASK',
+  title: 'First task',
+  description: 'A description',
+  statusCode: 'TO_DO',
+  reporterId: '11111111-1111-1111-1111-111111111111',
+  assigneeId: null,
+  rank: 0,
+  archived: false,
+  version: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+const populatedPage: IssuePage = {
+  items: [listIssueFixture],
+  page: 0,
+  size: 100,
+  totalItems: 1,
+  totalPages: 1,
+}
 
 vi.mock('../features/projects/projectsApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../features/projects/projectsApi')>()
@@ -250,6 +275,74 @@ describe('router', () => {
     ).toBeInTheDocument()
     expect(listMyWorkMock).toHaveBeenCalled()
   })
+
+  it('routes /projects/:projectKey/overview to the project landing surface', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    renderRouterAt(authenticatedSession, ['/projects/MES/overview'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Messor', level: 2 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('MES')).toBeInTheDocument()
+    const overviewActions = screen.getByRole('navigation', {
+      name: 'Proje kısayolları',
+    })
+    expect(within(overviewActions).getByRole('link', { name: 'Pano' })).toHaveAttribute(
+      'href',
+      '/projects/MES/board',
+    )
+    expect(within(overviewActions).getByRole('link', { name: 'İşler' })).toHaveAttribute(
+      'href',
+      '/projects/MES/issues',
+    )
+  })
+
+  it('renders the issue list contract (not the board) at /projects/:projectKey/issues', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(populatedPage)
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues'])
+
+    expect(await screen.findByText('First task')).toBeInTheDocument()
+    // The list view must not alias the board surface.
+    expect(
+      screen.queryByRole('region', { name: 'Kanban panosu' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('routes /projects/:projectKey/issues/new to the issue create form', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues/new'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Yeni iş' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Başlık')).toBeInTheDocument()
+  })
+
+  it('routes /projects/:projectKey/issues/:issueKey/edit to the issue edit form', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    getIssueMock.mockResolvedValue(listIssueFixture)
+    renderRouterAt(authenticatedSession, ['/projects/MES/issues/MES-1/edit'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'İş düzenle' }),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the session-expired boundary at /auth/session-expired', async () => {
+    renderRouterAt(authenticatedSession, ['/auth/session-expired'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Oturum sona erdi' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Tekrar giriş yap' })).toHaveAttribute(
+      'href',
+      '/login',
+    )
+  })
 })
 
 describe('authenticated shell', () => {
@@ -417,6 +510,46 @@ describe('authenticated shell', () => {
       within(rail).getByRole("link", { name: "Görevlerim" }),
     ).toBeInTheDocument()
 
+  })
+  it('top-bar create navigates to the issue create surface when a project is in context', async () => {
+    getProjectMock.mockResolvedValue(projectDetail)
+    listProjectMembersMock.mockResolvedValue([] as ProjectMember[])
+    listIssuesMock.mockResolvedValue(emptyPage)
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/projects/MES/board'])
+    await screen.findByRole('heading', { name: 'Messor', level: 2 })
+
+    await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+    // The real issue-create surface for the project renders.
+    expect(
+      await screen.findByRole('heading', { name: 'Yeni iş' }),
+    ).toBeInTheDocument()
+  })
+
+  it('top-bar create without a project goes to the projects list', async () => {
+    listProjectsMock.mockResolvedValue(emptyProjectsPage)
+    const user = userEvent.setup()
+    renderRouterAt(authenticatedSession, ['/my-work'])
+    await screen.findByRole('heading', { name: 'Görevlerim', level: 2 })
+
+    await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Projeler', level: 2 }),
+    ).toBeInTheDocument()
+  })
+
+  it('search and signals are non-actionable indicators, never enabled silent buttons', async () => {
+    renderRouterAt(authenticatedSession, ['/projects'])
+    await screen.findByRole('heading', { name: 'Projeler', level: 2 })
+
+    const search = screen.getByRole('button', { name: 'Ara' })
+    const signals = screen.getByRole('button', { name: 'Sinyaller' })
+    expect(search).toBeDisabled()
+    expect(search).toHaveAttribute('aria-disabled', 'true')
+    expect(signals).toBeDisabled()
+    expect(signals).toHaveAttribute('aria-disabled', 'true')
   })
 })
 

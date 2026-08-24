@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -111,6 +111,7 @@ function ProjectNavLink({
 export function AuthenticatedShell(): ReactElement {
   const { session, handleLogout, logoutPending, logoutError } = useSession()
   const location = useLocation()
+  const navigate = useNavigate()
   const [railCollapsed, setRailCollapsed] = useState(false)
   const accountRef = useRef<HTMLDetailsElement>(null)
   const accountSummaryRef = useRef<HTMLElement>(null)
@@ -158,6 +159,17 @@ export function AuthenticatedShell(): ReactElement {
     }
   }
 
+  // Global create: when a project is in context, open that project's issue
+  // creation surface; otherwise go to the projects list where project creation
+  // is offered to authorized users. This is a real navigation, never a no-op.
+  function handleCreate(): void {
+    if (projectKey !== null) {
+      navigate(`/projects/${encodeURIComponent(projectKey)}/issues/new`)
+      return
+    }
+    navigate('/projects')
+  }
+
   return (
     <div className="bi-shell">
       <header className="bi-topbar">
@@ -174,7 +186,9 @@ export function AuthenticatedShell(): ReactElement {
             type="button"
             className="bi-topbar__action"
             aria-label="Ara"
-            title="Ara (/)"
+            title="Arama henüz kullanılamıyor"
+            disabled
+            aria-disabled="true"
           >
             <IconSearch />
           </button>
@@ -183,6 +197,7 @@ export function AuthenticatedShell(): ReactElement {
             className="bi-topbar__action"
             aria-label="Oluştur"
             title="Oluştur"
+            onClick={handleCreate}
           >
             <IconCreate />
           </button>
@@ -190,7 +205,9 @@ export function AuthenticatedShell(): ReactElement {
             type="button"
             className="bi-topbar__action"
             aria-label="Sinyaller"
-            title="Sinyaller"
+            title="Sinyaller henüz kullanılamıyor"
+            disabled
+            aria-disabled="true"
           >
             <IconSignal />
           </button>

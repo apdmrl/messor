@@ -25,8 +25,10 @@ interface ProjectBoardProps {
   includeArchived: boolean
   /** WIP threshold for the per-column overburdened warning. */
   wipLimit?: number
-  /** When provided (authorized user), empty columns offer an add action. */
-  onCreate?: () => void
+  /** When provided (authorized user), every column offers an add action that
+   * receives the destination status code so a created issue lands in that
+   * column's workflow status. */
+  onCreate?: (statusCode: string) => void
   statusLabel: (code: string) => string
   assigneeLabel: (id: string | null) => string
   onSelect: (issueKey: string) => void

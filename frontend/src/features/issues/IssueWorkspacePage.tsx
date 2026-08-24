@@ -21,6 +21,7 @@ import { IssueFilters } from './IssueFilters'
 import type { StatusOption, MemberOption } from './IssueFilters'
 import { IssueForm } from './IssueForm'
 import type { IssueFormValues } from './IssueForm'
+import { IssueList } from './IssueList'
 import { ProjectBoard } from './ProjectBoard'
 import {
   parseFilters,
@@ -67,7 +68,11 @@ function memberName(member: ProjectMember): string {
   return `${member.firstName} ${member.lastName}`.trim()
 }
 
-export function IssueWorkspacePage(): ReactElement {
+export function IssueWorkspacePage({
+  view = 'board',
+}: {
+  view?: 'board' | 'list'
+}): ReactElement {
   const { projectKey, issueKey } = useParams<{
     projectKey: string
     issueKey?: string
@@ -135,6 +140,13 @@ export function IssueWorkspacePage(): ReactElement {
   const [activeForm, setActiveForm] = useState<'create' | 'edit' | null>(null)
   const [confirmingArchive, setConfirmingArchive] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // Destination workflow status for an issue created from a board column. The
+  // backend always creates into TO_DO, so a non-null status that differs is
+  // applied via an explicit post-create move (see createMutation).
+  const [createStatus, setCreateStatus] = useState<string | null>(null)
+  // Captures the issue after a successful create when its follow-up status move
+  // fails, so the error path can still reveal the created issue honestly.
+  const createdUnmovedRef = useRef<Issue | null>(null)
   const [bannerAlert, setBannerAlert] = useState<{
     kind: 'error' | 'info'
     message: string
@@ -360,19 +372,39 @@ export function IssueWorkspacePage(): ReactElement {
   }
 
   const createMutation = useMutation({
-    mutationFn: (input: {
+    mutationFn: async (input: {
       type: IssueType
       title: string
       description: string | null
       assigneeId: string | null
-    }) =>
-      createIssue(key, {
+      statusCode: string | null
+    }) => {
+      // The backend creates every issue into TO_DO. When the create originated
+      // from a board column with a different destination status, apply that
+      // status with the same authorized move mutation the board uses.
+      const created = await createIssue(key, {
         type: input.type,
         title: input.title,
         description: input.description,
         assigneeId: input.assigneeId,
-      }),
+      })
+      if (
+        input.statusCode !== null &&
+        input.statusCode !== created.statusCode
+      ) {
+        createdUnmovedRef.current = created
+        return moveIssue(created.issueKey, {
+          targetStatusCode: input.statusCode,
+          beforeIssueKey: null,
+          afterIssueKey: null,
+          expectedVersion: created.version,
+        })
+      }
+      createdUnmovedRef.current = null
+      return created
+    },
     onSuccess: async (issue) => {
+      createdUnmovedRef.current = null
       setFormError(null)
       setBannerAlert(null)
       setActiveForm(null)
@@ -384,6 +416,26 @@ export function IssueWorkspacePage(): ReactElement {
       navigate(`/projects/${key}/issues/${encodeURIComponent(issue.issueKey)}`)
     },
     onError: (error: unknown) => {
+      // The issue was created but the follow-up status move failed. There is
+      // nothing to roll back (creation cannot be undone), so reveal the created
+      // issue honestly with a clear banner instead of hiding it behind a stale
+      // form error.
+      const created = createdUnmovedRef.current
+      createdUnmovedRef.current = null
+      if (created !== null) {
+        setActiveForm(null)
+        setBannerAlert({
+          kind: 'error',
+          message:
+            'İş oluşturuldu ancak seçilen sütuna taşınamadı. İş varsayılan durumunda görünüyor.',
+        })
+        openedFromBoardRef.current = true
+        focusReturnIssueKeyRef.current = created.issueKey
+        navigate(
+          `/projects/${key}/issues/${encodeURIComponent(created.issueKey)}`,
+        )
+        return
+      }
       setFormError(safeErrorMessage(error))
     },
     onSettled: () => {
@@ -683,10 +735,14 @@ export function IssueWorkspacePage(): ReactElement {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [confirmingArchive, archiveMutation.isPending])
 
-  const openCreate = (): void => {
+  const openCreate = (statusCode?: string): void => {
     if (anyMutationPending || mutationLocked()) {
       return
     }
+    // Preserve the column's destination status when the create originates from
+    // a board column; the header create uses the server default (TO_DO).
+    setCreateStatus(statusCode ?? null)
+    createdUnmovedRef.current = null
     setActiveForm('create')
     setFormError(null)
     setBannerAlert(null)
@@ -747,6 +803,7 @@ export function IssueWorkspacePage(): ReactElement {
       title: values.title,
       description: values.description === '' ? null : values.description,
       assigneeId: values.assigneeId === '' ? null : values.assigneeId,
+      statusCode: createStatus,
     })
   }
 
@@ -904,7 +961,7 @@ export function IssueWorkspacePage(): ReactElement {
               type="button"
               ref={createButtonRef}
               className="issue-workspace__create"
-              onClick={openCreate}
+              onClick={() => openCreate()}
               disabled={anyMutationPending}
               aria-disabled={anyMutationPending}
             >
@@ -960,6 +1017,11 @@ export function IssueWorkspacePage(): ReactElement {
           />
         )}
 
+        {activeForm === 'create' && canMutate && createStatus !== null && (
+          <p className="issue-workspace__create-status" role="status">
+            Yeni iş şu duruma eklenecek: {statusLabel(createStatus)}
+          </p>
+        )}
         {activeForm === 'create' && canMutate && (
           <IssueForm
             key="create"
@@ -1013,23 +1075,33 @@ export function IssueWorkspacePage(): ReactElement {
             )}
 
           {issuesQuery.isSuccess &&
-            (issuesQuery.data.items.length > 0 || !hasActiveFilters) && (
-            <ProjectBoard
-              workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
-              issues={issuesQuery.data.items}
-              selectedIssueKey={routeIssueKey}
-              canMove={canChangeStatus}
-              moveDisabled={anyMutationPending}
-              movePendingKey={movePendingKey}
-              selectionDisabled={anyMutationPending}
-              includeArchived={filters.archive !== 'active'}
-              onCreate={canMutate ? openCreate : undefined}
-              onSelect={handleSelect}
-              onStatusChange={handleStatusChange}
-              statusLabel={statusLabel}
-              assigneeLabel={assigneeLabel}
-            />
-          )}
+            (issuesQuery.data.items.length > 0 || !hasActiveFilters) &&
+            (view === 'list' ? (
+              <IssueList
+                issues={issuesQuery.data.items}
+                selectedIssueKey={routeIssueKey}
+                selectionDisabled={anyMutationPending}
+                onSelect={handleSelect}
+                statusLabel={statusLabel}
+                assigneeLabel={assigneeLabel}
+              />
+            ) : (
+              <ProjectBoard
+                workflowStatuses={projectQuery.data?.workflowStatuses ?? []}
+                issues={issuesQuery.data.items}
+                selectedIssueKey={routeIssueKey}
+                canMove={canChangeStatus}
+                moveDisabled={anyMutationPending}
+                movePendingKey={movePendingKey}
+                selectionDisabled={anyMutationPending}
+                includeArchived={filters.archive !== 'active'}
+                onCreate={canMutate ? (code: string) => openCreate(code) : undefined}
+                onSelect={handleSelect}
+                onStatusChange={handleStatusChange}
+                statusLabel={statusLabel}
+                assigneeLabel={assigneeLabel}
+              />
+            ))}
 
           {issuesQuery.isSuccess && (issuesQuery.data.totalPages ?? 0) > 1 && (
             <nav className="issue-workspace__pagination" aria-label="Sayfalama">

@@ -16,8 +16,10 @@ interface KanbanColumnProps {
   selectionDisabled: boolean
   /** WIP threshold; a column exceeding it renders the overburdened warning. */
   wipLimit?: number
-  /** When provided (authorized user), an empty column offers an add action. */
-  onCreate?: () => void
+  /** When provided (authorized user), a column offers an add action. The
+   * destination status code is passed through so an issue created from a
+   * column is created into (or moved to) that status. */
+  onCreate?: (statusCode: string) => void
   /** The card currently grabbed by pointer drag or keyboard, or null. */
   grabbedKey: string | null
   /** The status code that is the current keyboard move target, or null. */
@@ -139,7 +141,7 @@ export function KanbanColumn({
             <button
               type="button"
               className="kanban-column__add"
-              onClick={onCreate}
+              onClick={() => onCreate(status.code)}
             >
               Kart ekle
             </button>
@@ -171,6 +173,17 @@ export function KanbanColumn({
             />
           ))}
         </ul>
+      )}
+      {issues.length > 0 && onCreate !== undefined && (
+        <footer className="kanban-column__footer">
+          <button
+            type="button"
+            className="kanban-column__add kanban-column__add--footer"
+            onClick={() => onCreate(status.code)}
+          >
+            İş ekle
+          </button>
+        </footer>
       )}
       {dropIndex !== null && (
         <div className="kanban-column__drop-guide" aria-hidden="true" />

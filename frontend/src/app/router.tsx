@@ -3,9 +3,11 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
+import { IssueFormPage } from '../features/issues/IssueFormPage'
 import { IssueWorkspacePage } from '../features/issues/IssueWorkspacePage'
 import { MyWorkPage } from '../features/my-work/MyWorkPage'
 import { MembersPage } from '../features/projects/MembersPage'
+import { ProjectOverviewPage } from '../features/projects/ProjectOverviewPage'
 import { ProjectSettingsPage } from '../features/projects/ProjectSettingsPage'
 import { ProjectsPage } from '../features/projects/ProjectsPage'
 import { AuthenticatedShell } from './AuthenticatedShell'
@@ -14,6 +16,7 @@ import {
   NotFoundPage,
   RouteErrorFallback,
   RouteLoading,
+  SessionExpiredPage,
 } from './routeBoundaries'
 
 function RequireAuth({ children }: { children: ReactElement }): ReactElement {
@@ -75,6 +78,10 @@ export const routes: RouteObject[] = [
         element: <RootRedirect />,
       },
       {
+        path: '/auth/session-expired',
+        element: <SessionExpiredPage />,
+      },
+      {
         element: (
           <RequireAuth>
             <AuthenticatedShell />
@@ -86,16 +93,28 @@ export const routes: RouteObject[] = [
             element: <ProjectsPage />,
           },
           {
+            path: '/projects/:projectKey/overview',
+            element: <ProjectOverviewPage />,
+          },
+          {
             path: '/projects/:projectKey/board',
             element: <IssueWorkspacePage />,
           },
           {
             path: '/projects/:projectKey/issues',
-            element: <IssueWorkspacePage />,
+            element: <IssueWorkspacePage view="list" />,
+          },
+          {
+            path: '/projects/:projectKey/issues/new',
+            element: <IssueFormPage mode="create" />,
           },
           {
             path: '/projects/:projectKey/issues/:issueKey',
             element: <IssueWorkspacePage />,
+          },
+          {
+            path: '/projects/:projectKey/issues/:issueKey/edit',
+            element: <IssueFormPage mode="edit" />,
           },
           {
             path: '/projects/:projectKey/settings',

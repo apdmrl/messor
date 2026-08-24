@@ -571,6 +571,160 @@ describe('IssueWorkspacePage', () => {
       const body = document.body.textContent ?? ''
       expect(body).not.toContain('backend validation secret')
     })
+    it('shows the destination status when creating from a populated column footer', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      renderWorkspace()
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      const inProgress = screen.getByRole('region', {
+        name: 'Sürüyor sütunu, 1 kart',
+      })
+      await userEvent.click(
+        within(inProgress).getByRole('button', { name: 'İş ekle' }),
+      )
+      expect(
+        await screen.findByText('Yeni iş şu duruma eklenecek: Sürüyor'),
+      ).toBeInTheDocument()
+    })
+
+    it('every populated board column exposes a reachable add action', async () => {
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      renderWorkspace()
+
+      const board = await screen.findByRole('region', { name: 'Kanban panosu' })
+      // TO_DO and IN_PROGRESS hold issues so they offer the footer add action.
+      expect(
+        within(board).getAllByRole('button', { name: 'İş ekle' }),
+      ).toHaveLength(2)
+      // The empty DONE column still offers its inline add action.
+      expect(
+        within(board).getAllByRole('button', { name: 'Kart ekle' }),
+      ).toHaveLength(1)
+    })
+
+    it('moves an issue created from a column into that column status', async () => {
+      const newIssue = makeIssue({
+        issueKey: 'MES-3',
+        number: 3,
+        title: 'Third task',
+      })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      moveIssueMock.mockResolvedValue({
+        ...newIssue,
+        statusCode: 'IN_PROGRESS',
+        version: 1,
+      })
+      getIssueMock.mockResolvedValue({
+        ...newIssue,
+        statusCode: 'IN_PROGRESS',
+        version: 1,
+      })
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      await user.click(
+        within(
+          screen.getByRole('region', { name: 'Sürüyor sütunu, 1 kart' }),
+        ).getByRole('button', { name: 'İş ekle' }),
+      )
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(createIssueMock).toHaveBeenCalledWith('MES', {
+          type: 'TASK',
+          title: 'Third task',
+          description: null,
+          assigneeId: null,
+        })
+      })
+      // The created issue is then moved to the destination column status.
+      await waitFor(() => {
+        expect(moveIssueMock).toHaveBeenCalledWith('MES-3', {
+          targetStatusCode: 'IN_PROGRESS',
+          beforeIssueKey: null,
+          afterIssueKey: null,
+          expectedVersion: 0,
+        })
+      })
+      await waitFor(() => {
+        expect(getIssueMock).toHaveBeenCalledWith('MES-3')
+      })
+    })
+
+    it('does not move when the header create targets the server default status', async () => {
+      const newIssue = makeIssue({ issueKey: 'MES-3', number: 3 })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      getIssueMock.mockResolvedValue(newIssue)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+
+      await user.click(await screen.findByRole('button', { name: 'Yeni iş' }))
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(createIssueMock).toHaveBeenCalledWith('MES', {
+          type: 'TASK',
+          title: 'Third task',
+          description: null,
+          assigneeId: null,
+        })
+      })
+      await waitFor(() => {
+        expect(moveIssueMock).not.toHaveBeenCalled()
+      })
+    })
+
+    it('reveals the created issue with a clear banner when the follow-up move fails', async () => {
+      const newIssue = makeIssue({ issueKey: 'MES-3', number: 3 })
+      getProjectMock.mockResolvedValue(projectDetail)
+      listProjectMembersMock.mockResolvedValue(members)
+      listIssuesMock.mockResolvedValue(pageWithIssues)
+      createIssueMock.mockResolvedValue(newIssue)
+      moveIssueMock.mockRejectedValue(
+        new ApiError(500, 'INTERNAL', 'backend move secret'),
+      )
+      getIssueMock.mockResolvedValue(newIssue)
+      listIssueActivityMock.mockResolvedValue(activity)
+      const user = userEvent.setup()
+      renderWorkspace()
+      await screen.findByRole('region', { name: 'Kanban panosu' })
+
+      await user.click(
+        within(
+          screen.getByRole('region', { name: 'Sürüyor sütunu, 1 kart' }),
+        ).getByRole('button', { name: 'İş ekle' }),
+      )
+      await user.type(screen.getByLabelText('Başlık'), 'Third task')
+      await user.click(screen.getByRole('button', { name: 'Oluştur' }))
+
+      await waitFor(() => {
+        expect(moveIssueMock).toHaveBeenCalled()
+      })
+      expect(
+        await screen.findByText(
+          'İş oluşturuldu ancak seçilen sütuna taşınamadı. İş varsayılan durumunda görünüyor.',
+        ),
+      ).toBeInTheDocument()
+      // The created issue is still revealed so it can be moved manually.
+      await waitFor(() => {
+        expect(getIssueMock).toHaveBeenCalledWith('MES-3')
+      })
+    })
   })
 
   describe('update', () => {

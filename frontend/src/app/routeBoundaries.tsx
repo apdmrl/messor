@@ -95,3 +95,21 @@ export function RouteLoading(): ReactElement {
     />
   )
 }
+/**
+ * Neutral session-expired boundary. Shown after a confirmed session expiry so
+ * the user is not silently bounced; offers a safe sign-in recovery. It never
+ * reveals session internals.
+ */
+export function SessionExpiredPage(): ReactElement {
+  return (
+    <div className="route-state">
+      <h2 className="route-state__heading">Oturum sona erdi</h2>
+      <p className="route-state__message">
+        Oturumun sona erdi. Devam etmek için tekrar giriş yap.
+      </p>
+      <Link className="route-state__recovery" to="/login">
+        Tekrar giriş yap
+      </Link>
+    </div>
+  )
+}

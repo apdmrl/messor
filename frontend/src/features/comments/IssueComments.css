@@ -8,11 +8,11 @@
 .issue-comments__empty,
 .issue-comments__error {
   margin: 0;
-  color: var(--messor-text-muted, #5f6b7a);
+  color: rgb(var(--messor-text-muted));
 }
 
 .issue-comments__error {
-  color: var(--messor-danger, #b3261e);
+  color: rgb(var(--messor-signal-danger));
 }
 
 .comment-list {
@@ -25,10 +25,10 @@
 }
 
 .comment-item {
-  border: 1px solid var(--messor-border, #d0d7de);
+  border: 1px solid rgb(var(--messor-border-subtle));
   border-radius: 6px;
   padding: 0.75rem;
-  background: var(--messor-surface, #ffffff);
+  background: rgb(var(--messor-surface-2));
 }
 
 .comment-item--deleted {
@@ -37,7 +37,7 @@
 }
 
 .comment-item__deleted {
-  color: var(--messor-text-muted, #5f6b7a);
+  color: rgb(var(--messor-text-muted));
   font-style: italic;
 }
 
@@ -54,7 +54,7 @@
 }
 
 .comment-item__time {
-  color: var(--messor-text-muted, #5f6b7a);
+  color: rgb(var(--messor-text-muted));
   font-size: 0.85em;
 }
 
@@ -86,20 +86,20 @@
   min-height: 44px;
   min-width: 44px;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--messor-border, #d0d7de);
+  border: 1px solid rgb(var(--messor-border-subtle));
   border-radius: 6px;
-  background: var(--messor-surface, #ffffff);
+  background: rgb(var(--messor-surface-2));
   cursor: pointer;
 }
 
 .comment-item__action--primary {
-  background: var(--messor-primary, #1f6feb);
-  border-color: var(--messor-primary, #1f6feb);
-  color: #ffffff;
+  background: rgb(var(--messor-signal-active));
+  border-color: rgb(var(--messor-signal-active));
+  color: rgb(var(--messor-surface-inverse));
 }
 
 .comment-item__action--danger {
-  color: var(--messor-danger, #b3261e);
+  color: rgb(var(--messor-signal-danger));
 }
 
 .comment-item__edit {
@@ -117,7 +117,7 @@
   min-height: 88px;
   resize: vertical;
   padding: 0.5rem;
-  border: 1px solid var(--messor-border, #d0d7de);
+  border: 1px solid rgb(var(--messor-border-subtle));
   border-radius: 6px;
 }
 
@@ -128,7 +128,7 @@
 
 .comment-item__error {
   margin: 0;
-  color: var(--messor-danger, #b3261e);
+  color: rgb(var(--messor-signal-danger));
 }
 
 .comment-item__confirm {
@@ -138,7 +138,7 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--messor-border, #d0d7de);
+  border-top: 1px solid rgb(var(--messor-border-subtle));
 }
 
 .comment-item__confirm-text {
@@ -160,14 +160,14 @@
   min-height: 88px;
   resize: vertical;
   padding: 0.5rem;
-  border: 1px solid var(--messor-border, #d0d7de);
+  border: 1px solid rgb(var(--messor-border-subtle));
   border-radius: 6px;
   font: inherit;
 }
 
 .comment-form__error {
   margin: 0;
-  color: var(--messor-danger, #b3261e);
+  color: rgb(var(--messor-signal-danger));
 }
 
 .comment-form__footer {
@@ -178,7 +178,7 @@
 }
 
 .comment-form__hint {
-  color: var(--messor-text-muted, #5f6b7a);
+  color: rgb(var(--messor-text-muted));
   font-size: 0.85em;
 }
 
@@ -186,10 +186,10 @@
   min-height: 44px;
   min-width: 44px;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--messor-primary, #1f6feb);
+  border: 1px solid rgb(var(--messor-signal-active));
   border-radius: 6px;
-  background: var(--messor-primary, #1f6feb);
-  color: #ffffff;
+  background: rgb(var(--messor-signal-active));
+  color: rgb(var(--messor-surface-inverse));
   cursor: pointer;
 }
 

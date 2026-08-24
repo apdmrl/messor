@@ -1,0 +1,108 @@
+.project-overview {
+  max-width: 720px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.project-overview__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.project-overview__heading-block {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.project-overview__heading {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  color: rgb(var(--messor-text-primary));
+}
+
+.project-overview__key {
+  margin: 0;
+  color: rgb(var(--messor-text-muted));
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+}
+
+.project-overview__role {
+  color: rgb(var(--messor-signal-active));
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.project-overview__description {
+  margin: 0;
+  color: rgb(var(--messor-text-secondary));
+  line-height: 1.6;
+}
+
+.project-overview__section {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: rgb(var(--messor-text-primary));
+}
+
+.project-overview__status-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.project-overview__status-item {
+  padding: 0.375rem 0.75rem;
+  color: rgb(var(--messor-text-primary));
+  background: rgb(var(--messor-surface-2));
+  border: 1px solid rgb(var(--messor-border-subtle));
+  border-radius: var(--messor-radius-card);
+  font-size: 0.875rem;
+}
+
+.project-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.project-overview__action {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.875rem;
+  color: rgb(var(--messor-signal-active));
+  background: rgb(var(--messor-surface-1));
+  border: 1px solid rgb(var(--messor-border-strong));
+  border-radius: var(--messor-radius-card);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.project-overview__action:hover {
+  color: rgb(var(--messor-text-primary));
+  background: rgb(var(--messor-signal-active-soft));
+  border-color: rgb(var(--messor-signal-active));
+}
+
+.project-overview__status {
+  margin: 0;
+  color: rgb(var(--messor-text-muted));
+}
+
+.project-overview__error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: rgb(var(--messor-signal-danger));
+  background: rgb(var(--messor-signal-danger) / 0.07);
+  border: 1px solid rgb(var(--messor-signal-danger) / 0.25);
+  border-radius: var(--messor-radius-card);
+}
