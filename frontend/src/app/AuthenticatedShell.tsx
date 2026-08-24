@@ -22,6 +22,10 @@ function navLinkClass({ isActive }: { isActive: boolean }): string {
   return isActive ? 'bi-rail__link bi-rail__link--active' : 'bi-rail__link'
 }
 
+export function initialRailCollapsed(isCompactViewport: boolean): boolean {
+  return isCompactViewport
+}
+
 function IconSearch(): ReactElement {
   return (
     <svg className="bi-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -112,7 +116,12 @@ export function AuthenticatedShell(): ReactElement {
   const { session, handleLogout, logoutPending, logoutError } = useSession()
   const location = useLocation()
   const navigate = useNavigate()
-  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(() =>
+    initialRailCollapsed(
+      typeof window !== 'undefined' &&
+        window.matchMedia?.('(max-width: 767px)').matches === true,
+    ),
+  )
   const accountRef = useRef<HTMLDetailsElement>(null)
   const accountSummaryRef = useRef<HTMLElement>(null)
 

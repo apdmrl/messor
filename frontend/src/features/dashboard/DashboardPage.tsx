@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import type { ReactElement } from 'react'
-import { ApiError } from '../../app/apiClient'
 import { DEFAULT_FILTERS } from '../issues/issueFilters'
 import { listMyWork } from '../my-work/myWorkApi'
 import { listProjects } from '../projects/projectsApi'
@@ -9,7 +8,9 @@ import { deriveDashboardMetrics } from './dashboardMetrics'
 import './DashboardPage.css'
 
 const PROJECTS_QUERY_KEY = ['projects'] as const
-const DASHBOARD_WORK_QUERY_KEY = ['dashboard', 'my-work'] as const
+const DASHBOARD_WORK_QUERY_KEY = ['dashboard', 'my-work', 'all'] as const
+const DASHBOARD_IN_PROGRESS_QUERY_KEY = ['dashboard', 'my-work', 'in-progress'] as const
+const DASHBOARD_COMPLETED_QUERY_KEY = ['dashboard', 'my-work', 'completed'] as const
 
 function statusLabel(statusCode: string): string {
   const normalized = statusCode.trim().toUpperCase().replace(/[-\s]+/g, '_')
@@ -35,8 +36,21 @@ export function DashboardPage(): ReactElement {
     queryKey: DASHBOARD_WORK_QUERY_KEY,
     queryFn: () => listMyWork(DEFAULT_FILTERS),
   })
+  const inProgressQuery = useQuery({
+    queryKey: DASHBOARD_IN_PROGRESS_QUERY_KEY,
+    queryFn: () => listMyWork({ ...DEFAULT_FILTERS, status: 'IN_PROGRESS' }),
+  })
+  const completedQuery = useQuery({
+    queryKey: DASHBOARD_COMPLETED_QUERY_KEY,
+    queryFn: () => listMyWork({ ...DEFAULT_FILTERS, status: 'DONE' }),
+  })
 
-  if (projectsQuery.isPending || workQuery.isPending) {
+  if (
+    projectsQuery.isPending ||
+    workQuery.isPending ||
+    inProgressQuery.isPending ||
+    completedQuery.isPending
+  ) {
     return (
       <section className="dashboard-page" aria-labelledby="dashboard-title">
         <header className="dashboard-page__header">
@@ -49,11 +63,13 @@ export function DashboardPage(): ReactElement {
     )
   }
 
-  if (projectsQuery.isError || workQuery.isError) {
-    const message =
-      projectsQuery.error instanceof ApiError || workQuery.error instanceof ApiError
-        ? 'Genel bakış verileri yüklenemedi. Lütfen tekrar deneyin.'
-        : 'Genel bakış verileri yüklenemedi. Lütfen tekrar deneyin.'
+  if (
+    projectsQuery.isError ||
+    workQuery.isError ||
+    inProgressQuery.isError ||
+    completedQuery.isError
+  ) {
+    const message = 'Genel bakış verileri yüklenemedi. Lütfen tekrar deneyin.'
     return (
       <section className="dashboard-page" aria-labelledby="dashboard-title">
         <header className="dashboard-page__header">
@@ -70,7 +86,12 @@ export function DashboardPage(): ReactElement {
 
   const projects = projectsQuery.data.items
   const issues = workQuery.data.items
-  const metrics = deriveDashboardMetrics(projects, issues)
+  const metrics = deriveDashboardMetrics({
+    projectTotal: projectsQuery.data.totalItems,
+    issueTotal: workQuery.data.totalItems,
+    completedTotal: completedQuery.data.totalItems,
+    inProgressTotal: inProgressQuery.data.totalItems,
+  })
 
   return (
     <section className="dashboard-page" aria-labelledby="dashboard-title">

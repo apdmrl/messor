@@ -1,6 +1,3 @@
-import type { Issue } from '../issues/types'
-import type { ProjectSummary } from '../projects/types'
-
 export interface DashboardMetrics {
   projects: number
   totalIssues: number
@@ -8,24 +5,18 @@ export interface DashboardMetrics {
   inProgress: number
 }
 
-function normalizeStatus(statusCode: string): string {
-  return statusCode.trim().toUpperCase().replace(/[-\s]+/g, '_')
+export interface DashboardMetricsSource {
+  projectTotal: number
+  issueTotal: number
+  completedTotal: number
+  inProgressTotal: number
 }
 
-export function deriveDashboardMetrics(
-  projects: ProjectSummary[],
-  issues: Issue[],
-): DashboardMetrics {
+export function deriveDashboardMetrics(source: DashboardMetricsSource): DashboardMetrics {
   return {
-    projects: projects.length,
-    totalIssues: issues.length,
-    completed: issues.filter((issue) =>
-      ['DONE', 'COMPLETED', 'CLOSED'].includes(normalizeStatus(issue.statusCode)),
-    ).length,
-    inProgress: issues.filter((issue) =>
-      ['IN_PROGRESS', 'INPROGRESS', 'ACTIVE', 'DOING'].includes(
-        normalizeStatus(issue.statusCode),
-      ),
-    ).length,
+    projects: source.projectTotal,
+    totalIssues: source.issueTotal,
+    completed: source.completedTotal,
+    inProgress: source.inProgressTotal,
   }
 }
