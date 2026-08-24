@@ -58,7 +58,7 @@ function LoginRoute(): ReactElement {
 function RootRedirect(): ReactElement {
   const { session } = useSession()
   if (session.status === 'authenticated') {
-    return <Navigate to="/overview" replace />
+    return <Navigate to="/projects" replace />
   }
   return <Navigate to="/login" replace />
 }
