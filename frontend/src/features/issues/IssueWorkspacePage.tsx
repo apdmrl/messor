@@ -415,7 +415,7 @@ export function IssueWorkspacePage({
       focusReturnIssueKeyRef.current = issue.issueKey
       navigate(`/projects/${key}/issues/${encodeURIComponent(issue.issueKey)}`)
     },
-    onError: (error: unknown) => {
+    onError: async (error: unknown) => {
       // The issue was created but the follow-up status move failed. There is
       // nothing to roll back (creation cannot be undone), so reveal the created
       // issue honestly with a clear banner instead of hiding it behind a stale
@@ -429,6 +429,9 @@ export function IssueWorkspacePage({
           message:
             'İş oluşturuldu ancak seçilen sütuna taşınamadı. İş varsayılan durumunda görünüyor.',
         })
+        // The create succeeded even though the follow-up move failed, so the
+        // default-status issue is real and must appear in the board/list cache.
+        await queryClient.invalidateQueries({ queryKey: ['issues', key] })
         openedFromBoardRef.current = true
         focusReturnIssueKeyRef.current = created.issueKey
         navigate(

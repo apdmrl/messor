@@ -93,9 +93,9 @@
 }
 
 .comment-item__action--primary {
-  background: rgb(var(--messor-signal-active));
+  background: rgb(var(--messor-surface-1));
   border-color: rgb(var(--messor-signal-active));
-  color: rgb(var(--messor-surface-inverse));
+  color: rgb(var(--messor-signal-active));
 }
 
 .comment-item__action--danger {
@@ -188,8 +188,8 @@
   padding: 0.5rem 0.75rem;
   border: 1px solid rgb(var(--messor-signal-active));
   border-radius: 6px;
-  background: rgb(var(--messor-signal-active));
-  color: rgb(var(--messor-surface-inverse));
+  background: rgb(var(--messor-surface-1));
+  color: rgb(var(--messor-signal-active));
   cursor: pointer;
 }
 

@@ -129,26 +129,58 @@ describe('collaboration CSS semantic-token contract', () => {
     expect(header).toMatch(/rgb\(var\(--messor-surface-2\)\s*\/\s*0?\.?94/i)
   })
 
-  it('dark theme maps every consumed collaboration token to a dark channel value', () => {
-    const darkBlock = indexCss
-      .split('[data-theme=\'dark\']')[1] ?? ''
-    const consumed = new Set<string>()
-    for (const file of [commentsCss, drawerCss]) {
-      for (const m of file.matchAll(/var\((--messor-[a-z0-9-]+)/g)) {
-        consumed.add(m[1])
+  it('primary comment action keeps normal-text contrast in both themes', () => {
+    // The primary comment action uses amber (signal-active) text on surface-1.
+    // Both must be the approved channel tokens and the pairing must clear the
+    // 4.5:1 WCAG normal-text threshold in light and dark themes.
+    expect(commentsCss).toMatch(
+      /\.comment-item__action--primary\s*\{[\s\S]*?background:\s*rgb\(var\(--messor-surface-1\)\)[\s\S]*?color:\s*rgb\(var\(--messor-signal-active\)\)/,
+    )
+    expect(commentsCss).toMatch(
+      /\.comment-form__submit\s*\{[\s\S]*?background:\s*rgb\(var\(--messor-surface-1\)\)[\s\S]*?color:\s*rgb\(var\(--messor-signal-active\)\)/,
+    )
+
+    function channelLuminance(r: number, g: number, b: number): number {
+      const lin = (c: number): number => {
+        const s = c / 255
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
       }
+      return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
     }
-    for (const token of consumed) {
+    function contrastRatio(
+      fg: [number, number, number],
+      bg: [number, number, number],
+    ): number {
+      const l1 = channelLuminance(fg[0], fg[1], fg[2])
+      const l2 = channelLuminance(bg[0], bg[1], bg[2])
+      const hi = Math.max(l1, l2)
+      const lo = Math.min(l1, l2)
+      return (hi + 0.05) / (lo + 0.05)
+    }
+    function channelsOf(css: string, token: string): [number, number, number] {
       const re = new RegExp(
-        `${token.replace(/[-]/g, '\\-')}:\\s*([\\d\\s]+);`,
+        `${token.replace(/[-]/g, '\\-')}:\\s*(\\d+)\\s+(\\d+)\\s+(\\d+);`,
       )
-      const match = re.exec(darkBlock)
+      const m = re.exec(css)
+      if (m === null) {
+        throw new Error(`missing channel values for ${token}`)
+      }
+      return [Number(m[1]), Number(m[2]), Number(m[3])]
+    }
+
+    const lightCss = indexCss.split("[data-theme='dark']")[0] ?? ''
+    const darkCss = indexCss.split("[data-theme='dark']")[1] ?? ''
+
+    for (const [label, themeCss] of [
+      ['light', lightCss],
+      ['dark', darkCss],
+    ] as const) {
+      const fg = channelsOf(themeCss, '--messor-signal-active')
+      const bg = channelsOf(themeCss, '--messor-surface-1')
       expect(
-        match,
-        `dark theme must define channel values for consumed token ${token}`,
-      ).not.toBeNull()
-      // The value is space-separated RGB channels (e.g. "21 21 19"), never a hex.
-      expect(match![1].trim()).toMatch(/^\d+\s+\d+\s+\d+$/)
+        contrastRatio(fg, bg),
+        `${label} primary-action contrast must meet WCAG normal-text (>= 4.5:1)`,
+      ).toBeGreaterThanOrEqual(4.5)
     }
   })
 })

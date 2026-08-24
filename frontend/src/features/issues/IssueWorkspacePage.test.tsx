@@ -701,7 +701,8 @@ describe('IssueWorkspacePage', () => {
       getIssueMock.mockResolvedValue(newIssue)
       listIssueActivityMock.mockResolvedValue(activity)
       const user = userEvent.setup()
-      renderWorkspace()
+      const queryClient = renderWorkspace()
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
       await screen.findByRole('region', { name: 'Kanban panosu' })
 
       await user.click(
@@ -720,6 +721,13 @@ describe('IssueWorkspacePage', () => {
           'İş oluşturuldu ancak seçilen sütuna taşınamadı. İş varsayılan durumunda görünüyor.',
         ),
       ).toBeInTheDocument()
+      // The default-status issue must be invalidated so it never disappears
+      // from the board/list cache after the failed status move.
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ['issues', 'MES'],
+        })
+      })
       // The created issue is still revealed so it can be moved manually.
       await waitFor(() => {
         expect(getIssueMock).toHaveBeenCalledWith('MES-3')
