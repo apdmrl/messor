@@ -265,6 +265,10 @@ export function AuthenticatedShell(): ReactElement {
             <IconChevron />
           </button>
 
+          <NavLink to="/overview" end className={navLinkClass} aria-label="Genel Bakış">
+            <IconSignal />
+            <span className="bi-rail__label">Genel Bakış</span>
+          </NavLink>
           <NavLink to="/my-work" className={navLinkClass} aria-label="Görevlerim">
             <IconWork />
             <span className="bi-rail__label">Görevlerim</span>

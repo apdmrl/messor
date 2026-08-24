@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import type { ReactElement } from 'react'
 import type { RouteObject } from 'react-router-dom'
 import { LoginPage } from '../features/auth/LoginPage'
+import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { IssueFormPage } from '../features/issues/IssueFormPage'
 import { IssueWorkspacePage } from '../features/issues/IssueWorkspacePage'
 import { MyWorkPage } from '../features/my-work/MyWorkPage'
@@ -54,11 +55,10 @@ function LoginRoute(): ReactElement {
     </RedirectIfAuthenticated>
   )
 }
-
 function RootRedirect(): ReactElement {
   const { session } = useSession()
   if (session.status === 'authenticated') {
-    return <Navigate to="/projects" replace />
+    return <Navigate to="/overview" replace />
   }
   return <Navigate to="/login" replace />
 }
@@ -88,6 +88,10 @@ export const routes: RouteObject[] = [
           </RequireAuth>
         ),
         children: [
+          {
+            path: '/overview',
+            element: <DashboardPage />,
+          },
           {
             path: '/projects',
             element: <ProjectsPage />,
